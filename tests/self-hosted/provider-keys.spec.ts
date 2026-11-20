@@ -18,11 +18,11 @@ test('self-hosted setup requires own keys, keeps optional providers in Configura
  await expect(dialog.getByLabel('Context.dev API key', { exact: true })).toHaveJSProperty('required', true);
  await expect(dialog.getByLabel('OpenAI API key', { exact: true })).toHaveJSProperty('required', true);
  await expect(dialog.getByRole('button', { name: 'Save and start', exact: true })).toBeDisabled();
- for (const name of ['QuickEnrich', 'Apollo', 'ContactOut', 'Hunter', 'Model']) await expect(dialog).not.toContainText(name);
+ for (const name of ['QuickEnrich', 'Apollo', 'ContactOut', 'LeadMagic', 'Hunter', 'Model']) await expect(dialog).not.toContainText(name);
  await expect(page.locator('body')).not.toContainText(/trial|allowance|included credit|\$1\.00/i);
  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
  const connections = page.getByRole('region', { name: 'Connections' });
- for (const name of ['QuickEnrich', 'Apollo', 'ContactOut']) {
+ for (const name of ['QuickEnrich', 'Apollo', 'ContactOut', 'LeadMagic']) {
   await connections.getByRole('listitem').filter({ hasText: name }).getByRole('button', { name: 'Connect', exact: true }).click();
   const connect = page.getByRole('dialog', { name: `Connect ${name}` });
   await connect.getByRole('button', { name: `About ${name} API key`, exact: true }).click();

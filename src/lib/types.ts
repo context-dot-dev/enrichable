@@ -36,8 +36,10 @@ export const EmailDraftSchema = z.object({
 });
 export type EmailDraft = z.infer<typeof EmailDraftSchema>;
 
-export const EMAIL_PROVIDERS = ['quickenrich', 'hunter', 'apollo', 'prospeo', 'contactout'] as const;
+export const EMAIL_PROVIDERS = ['quickenrich', 'hunter', 'apollo', 'prospeo', 'contactout', 'leadmagic'] as const;
 export type EmailProvider = typeof EMAIL_PROVIDERS[number];
+/** The waterfall a new Find email column starts with. LeadMagic has no included credit, so it is opt-in and needs your own key. */
+export const DEFAULT_EMAIL_PROVIDERS = ['quickenrich', 'hunter', 'apollo', 'prospeo', 'contactout'] as const satisfies readonly EmailProvider[];
 export const ColumnOpSchema = z.discriminatedUnion('kind', [
  z.object({
   kind: z.literal('email-enrichment'),
@@ -45,7 +47,7 @@ export const ColumnOpSchema = z.discriminatedUnion('kind', [
   company: z.string().max(300).default(''),
   domain: z.string().trim().min(1).max(500),
   profileUrl: z.string().max(500).default(''),
-  providers: z.array(z.enum(EMAIL_PROVIDERS)).min(1).max(5).default([...EMAIL_PROVIDERS]).refine(items => new Set(items).size === items.length, 'Each provider can appear only once.'),
+  providers: z.array(z.enum(EMAIL_PROVIDERS)).min(1).max(EMAIL_PROVIDERS.length).default([...DEFAULT_EMAIL_PROVIDERS]).refine(items => new Set(items).size === items.length, 'Each provider can appear only once.'),
  }),
  z.object({
   kind: z.literal('email-draft'),

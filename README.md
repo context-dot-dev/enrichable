@@ -88,7 +88,7 @@ Bring your own keys. Usage is billed to your provider accounts. Add them in the 
 | [Context.dev](https://link.context.dev/enrichable/api-keys) | Web search, scraping, company and people data | Required |
 | [OpenAI](https://platform.openai.com/api-keys) | AI columns, Find rows and column setup | Required |
 | [TypeSafe](https://typesafe.ai) | Calibrated true/false, category and score columns (falls back to OpenAI) | Optional |
-| [Hunter](https://hunter.io/api-keys), [Prospeo](https://app.prospeo.io/), [Apollo](https://developer.apollo.io/), [QuickEnrich](https://app.quickenrich.io/settings/api-key), [ContactOut](https://contactout.com/api) | Work emails in the [email waterfall](docs/email-enrichment.md) | Optional |
+| [Hunter](https://hunter.io/api-keys), [Prospeo](https://app.prospeo.io/), [Apollo](https://developer.apollo.io/), [QuickEnrich](https://app.quickenrich.io/settings/api-key), [ContactOut](https://contactout.com/api), [LeadMagic](https://app.leadmagic.io/settings/api) | Work emails in the [email waterfall](docs/email-enrichment.md) | Optional |
 
 Keys you enter stay in your browser and are only sent to your deployment's API routes. For a private team deployment, set the provider variables (`OPENAI_API_KEY`, `CONTEXT_DEV_API_KEY`, and so on) on the server together with `ENRICHABLE_PASSWORD`. [.env.example](.env.example) lists every option.
 

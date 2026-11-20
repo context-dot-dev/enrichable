@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import { ColumnOpSchema, type ColumnOp } from '../../src/lib/types';
+import { ColumnOpSchema, DEFAULT_EMAIL_PROVIDERS, EMAIL_PROVIDERS, type ColumnOp } from '../../src/lib/types';
 import { opDependencies, renameOpReferences } from '../../src/lib/references';
 import type { Provider } from '../../src/lib/organization-settings';
 import { testAccess } from './access-fixture';
@@ -198,4 +198,47 @@ test('an included 429 is a retryable wait and settles without charge', async t =
  t.mock.method(globalThis, 'fetch', async () => Response.json({ error: 'busy' }, { status: 429 }));
  await assert.rejects(includedRun(signedIn(), sharedRequest('hunter', { name: 'Ada Lovelace', domain: 'example.com', company: '', profileUrl: '' }), access), (error: unknown) => (error as { failure?: { reason: string } }).failure?.reason === 'rate_limited');
  assert.equal((await store.balance(actor())).remainingUsd, 1);
+});
+test('LeadMagic runs on its own key with header auth and reports its validated status', async t => {
+ const calls: Request[] = [];
+ t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+  const request = new Request(input, init); calls.push(request);
+  return Response.json({ email: 'ada@example.com', status: 'valid', credits_consumed: 1 });
+ });
+ const result = await runEmailWaterfall(withKeys({ leadmagic: 'own-leadmagic' }), { ...op, profileUrl: 'https://www.linkedin.com/in/ada', providers: ['leadmagic', 'hunter'] }, row);
+ assert.equal(calls.length, 1);
+ assert.equal(calls[0].url, 'https://api.leadmagic.io/v1/people/email-finder');
+ assert.equal(calls[0].method, 'POST');
+ assert.equal(calls[0].headers.get('x-api-key'), 'own-leadmagic');
+ assert.deepEqual(await calls[0].json(), { full_name: 'Ada Lovelace', domain: 'example.com', company_name: 'Example', profile_url: 'https://www.linkedin.com/in/ada' });
+ assert.equal(result.value, 'ada@example.com');
+ assert.equal(result.meta?.provider, 'leadmagic');
+ assert.equal(result.meta?.enrichment?.attempts[0].source, 'own-key');
+ assert.equal(result.meta?.enrichment?.costUsd, 0);
+ assert.equal(result.meta?.enrichment?.verified, true);
+ assert.equal(result.meta?.enrichment?.verificationStatus, 'valid');
+});
+test('a LeadMagic miss is a 200 with no email, so the waterfall moves to the next provider', async t => {
+ const calls: string[] = [];
+ t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+  const url = String(input); calls.push(url);
+  if (url.includes('leadmagic')) return Response.json({ email: null, status: null, credits_consumed: 0, message: 'No verified email found.' });
+  return Response.json({ data: { email: 'ada@example.com', verification: { status: 'valid' } } });
+ });
+ const result = await runEmailWaterfall(withKeys({ leadmagic: 'own-leadmagic', hunter: 'own-hunter' }), { ...op, providers: ['leadmagic', 'hunter'] }, row);
+ assert.equal(result.value, 'ada@example.com'); assert.equal(calls.length, 2);
+ assert.deepEqual(result.meta?.enrichment?.attempts.map(a => [a.provider, a.status]), [['leadmagic', 'No email found'], ['hunter', 'Found']]);
+ assert.deepEqual(emailCandidate('leadmagic', { email: null, status: null }), { email: null, verified: false, verificationStatus: 'unknown' });
+});
+test('LeadMagic is opt-in and own-key only: defaults leave it out and it never draws included credit', async t => {
+ t.mock.method(globalThis, 'fetch', async () => { throw new Error('Must not call'); });
+ assert.ok(!(DEFAULT_EMAIL_PROVIDERS as readonly string[]).includes('leadmagic'));
+ const parsed = ColumnOpSchema.parse({ kind: 'email-enrichment', name: op.name, company: op.company, domain: op.domain });
+ assert.deepEqual(parsed.kind === 'email-enrichment' ? parsed.providers : null, [...DEFAULT_EMAIL_PROVIDERS]);
+ assert.equal(ColumnOpSchema.safeParse({ ...op, providers: [...EMAIL_PROVIDERS] }).success, true);
+ assert.throws(() => sharedRequest('leadmagic', { name: 'Ada Lovelace', domain: 'example.com', company: '', profileUrl: '' }), /LeadMagic API key/);
+ const result = await runEmailWaterfall(signedIn(), { ...op, providers: ['leadmagic'] }, row);
+ assert.equal(result.value, null);
+ assert.equal(result.meta?.enrichment?.costUsd, 0);
+ assert.deepEqual(result.failure, { reason: 'credential_missing', retryable: false, provider: 'email' });
 });

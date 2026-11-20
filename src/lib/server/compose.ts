@@ -3,7 +3,7 @@ import 'server-only';
 
 import { generateText, Output } from 'ai';
 import { z } from 'zod';
-import { type ColumnOp, type ComposeColumnRequest, type ComposeColumnResponse, EMAIL_PROVIDERS, PROSPEO_FIELDS, OUTPUT_TYPES, type PageSource } from '../types';
+import { type ColumnOp, type ComposeColumnRequest, type ComposeColumnResponse, DEFAULT_EMAIL_PROVIDERS, PROSPEO_FIELDS, OUTPUT_TYPES, type PageSource } from '../types';
 import { ColumnOpInputSchema, instructionField, instructionText, OP_KINDS, OPERATIONS } from '../operations';
 import type { ProviderAccess } from './provider-access';
 
@@ -97,7 +97,7 @@ function toOp(flat: Flat, decider: 'jev' | 'openai'): ComposeColumnResponse['op'
 		case 'formula':
 			return { kind: 'formula', request: flat.text };
 		case 'email-enrichment':
-			return { kind: 'email-enrichment', name: flat.personName ?? '', domain: flat.domain ?? '', company: flat.personCompany ?? '', profileUrl: flat.personProfileUrl ?? '', providers: [...EMAIL_PROVIDERS] };
+			return { kind: 'email-enrichment', name: flat.personName ?? '', domain: flat.domain ?? '', company: flat.personCompany ?? '', profileUrl: flat.personProfileUrl ?? '', providers: [...DEFAULT_EMAIL_PROVIDERS] };
 		case 'email-draft':
 			return { kind: 'email-draft', mode: flat.emailMode ?? 'ai', prompt: flat.text, to: '', cc: '', bcc: '', subject: '', body: '', ...flat.emailFields };
 		case 'ai':

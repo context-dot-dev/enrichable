@@ -3,7 +3,7 @@ import { CONTEXT_API_KEYS_URL } from '@/lib/constants';
 import { maskKey, type Settings } from '@/lib/keys';
 import { providerField, type OrganizationSettings, type Provider } from '@/lib/organization-settings';
 
-export const CONNECTION_ORDER = ['context', 'openai', 'typesafe', 'hunter', 'prospeo', 'quickenrich', 'apollo', 'contactout'] as const satisfies readonly Provider[];
+export const CONNECTION_ORDER = ['context', 'openai', 'typesafe', 'hunter', 'prospeo', 'quickenrich', 'apollo', 'contactout', 'leadmagic'] as const satisfies readonly Provider[];
 export const REQUIRED_PROVIDERS = ['context', 'openai'] as const satisfies readonly Provider[];
 
 export const PROVIDER_INFO: Record<Provider, { name: string; logo: string; description: string; link: string; placeholder: string; verifiable: boolean }> = {
@@ -15,6 +15,7 @@ export const PROVIDER_INFO: Record<Provider, { name: string; logo: string; descr
 	quickenrich: { name: 'QuickEnrich', logo: '/providers/quickenrich.png', description: 'Find email provider', link: 'https://app.quickenrich.io/settings/api-key', placeholder: 'Paste your API key', verifiable: false },
 	apollo: { name: 'Apollo', logo: '/providers/apollo.svg', description: 'Find email provider', link: 'https://developer.apollo.io/', placeholder: 'Paste your API key', verifiable: false },
 	contactout: { name: 'ContactOut', logo: '/providers/contactout.png', description: 'Find email provider', link: 'https://contactout.com/api', placeholder: 'Paste your API key', verifiable: false },
+	leadmagic: { name: 'LeadMagic', logo: '/providers/leadmagic.svg', description: 'Find email provider', link: 'https://app.leadmagic.io/settings/api', placeholder: 'Paste your API key', verifiable: false },
 };
 export const LOGOLINK_URL = 'https://www.context.dev/dashboard/logolink';
 

@@ -134,7 +134,7 @@ test('redaction covers every provider in the list', () => {
 });
 
 test('availability reports every provider in the list from server-side sources only', async (t) => {
-	const env: Record<Provider, string> = { openai: 'OPENAI_API_KEY', context: 'CONTEXT_DEV_API_KEY', typesafe: 'TYPESAFE_API_KEY', hunter: 'HUNTER_API_KEY', prospeo: 'PROSPEO_API_KEY', quickenrich: 'QUICKENRICH_API_KEY', apollo: 'APOLLO_API_KEY', contactout: 'CONTACTOUT_API_KEY' };
+	const env: Record<Provider, string> = { openai: 'OPENAI_API_KEY', context: 'CONTEXT_DEV_API_KEY', typesafe: 'TYPESAFE_API_KEY', hunter: 'HUNTER_API_KEY', prospeo: 'PROSPEO_API_KEY', quickenrich: 'QUICKENRICH_API_KEY', apollo: 'APOLLO_API_KEY', contactout: 'CONTACTOUT_API_KEY', leadmagic: 'LEADMAGIC_API_KEY' };
 	setEnv(t, { ENRICHABLE_PASSWORD: '', ENRICHABLE_ALLOW_SERVER_KEYS_WITHOUT_PASSWORD: 'true', ENRICHABLE_OPENAI_TRIAL_ENABLED: 'false', ...Object.fromEntries(PROVIDERS.map((provider) => [env[provider], `server-${provider}`])) });
 	const request = () => new Request('http://localhost/api/keys/verify', { headers: { 'x-hunter-key': 'request-only' } });
 	const open = await serverKeyAvailability(request());

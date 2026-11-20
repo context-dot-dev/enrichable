@@ -17,6 +17,7 @@ export interface Settings {
 	hunterKey: string;
 	quickenrichKey: string;
 	apolloKey: string;
+	leadmagicKey: string;
 	contactoutKey: string;
 	prospeoKey: string;
 	/** Public client ID for Context.dev Logo Link image delivery. */
@@ -37,7 +38,7 @@ const STORAGE_KEY = 'enrichable.settings.v1';
 const listeners = new Set<() => void>();
 const publish = () => { for (const listener of listeners) listener(); };
 
-export const DEFAULT_SETTINGS: Settings = { openaiKey: '', contextKey: '', typesafeKey: '', hunterKey: '', quickenrichKey: '', apolloKey: '', contactoutKey: '', prospeoKey: '', logolinkKey: '', accessPassword: '', model: DEFAULT_MODEL, classifierModel: 'decisions', openaiBaseUrl: '', concurrency: 4, preferJev: true };
+export const DEFAULT_SETTINGS: Settings = { openaiKey: '', contextKey: '', typesafeKey: '', hunterKey: '', quickenrichKey: '', apolloKey: '', contactoutKey: '', prospeoKey: '', leadmagicKey: '', logolinkKey: '', accessPassword: '', model: DEFAULT_MODEL, classifierModel: 'decisions', openaiBaseUrl: '', concurrency: 4, preferJev: true };
 const publicFields = ['model', 'classifierModel', 'openaiBaseUrl', 'concurrency', 'preferJev', 'logolinkKey', 'companyDomain'] as const;
 
 // Browser-local adapter.
@@ -112,6 +113,7 @@ export function keyHeaders(settings: Settings = loadSettings()): Record<string, 
 	if (settings.apolloKey) headers['x-apollo-key'] = settings.apolloKey;
 	if (settings.contactoutKey) headers['x-contactout-key'] = settings.contactoutKey;
 	if (settings.prospeoKey) headers['x-prospeo-key'] = settings.prospeoKey;
+	if (settings.leadmagicKey) headers['x-leadmagic-key'] = settings.leadmagicKey;
 	if (settings.accessPassword) headers['x-enrichable-password'] = settings.accessPassword;
 	if (settings.model) headers['x-openai-model'] = settings.model;
 	if (settings.classifierModel) headers['x-classifier-model'] = settings.classifierModel;

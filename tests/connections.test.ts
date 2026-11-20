@@ -10,6 +10,7 @@ test('self-hosted saved keys read as saved, including optional providers without
 	assert.equal(connections.context.state, 'saved');
 	assert.equal(connections.apollo.state, 'saved');
 	assert.equal(connections.quickenrich.state, 'missing');
+	assert.equal(connections.leadmagic.state, 'missing');
 	assert.equal(connections.openai.state, 'missing', 'Self-hosted never offers the hosted trial');
 	assert.equal(isReady(connections.context) && isReady(connections.openai), false);
 });

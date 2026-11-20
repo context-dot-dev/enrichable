@@ -25,7 +25,7 @@ test('hosted first run asks only for the required connections and offers one Rec
  await expect(providers).toHaveCount(2);
  await expect(providers.nth(0)).toContainText('Context.dev');
  await expect(providers.nth(1)).toContainText('OpenAI');
- for (const hidden of ['available', 'TypeSafe', 'Hunter', 'Prospeo', 'QuickEnrich', 'Apollo', 'ContactOut', 'Logo Link', 'model']) await expect(dialog).not.toContainText(hidden);
+ for (const hidden of ['available', 'TypeSafe', 'Hunter', 'Prospeo', 'QuickEnrich', 'Apollo', 'ContactOut', 'LeadMagic', 'Logo Link', 'model']) await expect(dialog).not.toContainText(hidden);
  await expect(dialog.getByLabel('Context.dev API key', { exact: true })).toHaveCount(0);
  const save = dialog.getByRole('button', { name: 'Save and start', exact: true });
  await expect(save).toBeDisabled();

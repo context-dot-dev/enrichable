@@ -32,7 +32,7 @@ export function EmailWaterfallPicker({ value, onChange }: { value: EmailProvider
 				return <SortableItem key={provider} value={provider} className="flex h-9 items-center gap-2 rounded-md border-0 bg-surface px-1 shadow-none ring-0 hover:bg-neutral-5">
 					<SortableItemHandle render={<button type="button" />} aria-label={`Reorder ${info.name}`} className="grid size-6 touch-none place-items-center text-fg-subtle"><GripVertical className="size-3.5" /></SortableItemHandle>
 					<Image src={info.logo} alt="" width={18} height={18} unoptimized className="size-[18px] rounded object-contain" />
-					<span className="flex-1 text-[12px]">{info.name}</span>{includedCredit && <span className="text-[11px] tabular-nums text-fg-subtle">${info.baseUsd.toFixed(4).replace(/0+$/, '')}</span>}
+					<span className="flex-1 text-[12px]">{info.name}</span>{includedCredit && <span className="text-[11px] tabular-nums text-fg-subtle">{info.baseUsd ? `$${info.baseUsd.toFixed(4).replace(/0+$/, '')}` : 'Your key'}</span>}
 					<input type="checkbox" aria-label={`Use ${info.name}`} checked={enabled.has(provider)} onChange={(event) => onChange(order.filter((entry) => entry === provider ? event.target.checked : enabled.has(entry)))} className="mx-1 size-3.5 accent-blue-600" />
 				</SortableItem>;
 			})}

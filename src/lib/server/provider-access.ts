@@ -56,6 +56,7 @@ const PROVIDER_INFO: Record<Provider, { env: string; label: string; failure: Fai
 	quickenrich: { env: 'QUICKENRICH_API_KEY', label: 'QuickEnrich', failure: 'email' },
 	apollo: { env: 'APOLLO_API_KEY', label: 'Apollo', failure: 'email' },
 	contactout: { env: 'CONTACTOUT_API_KEY', label: 'ContactOut', failure: 'email' },
+	leadmagic: { env: 'LEADMAGIC_API_KEY', label: 'LeadMagic', failure: 'email' },
 };
 const OPENAI_API = 'https://api.openai.com/v1';
 

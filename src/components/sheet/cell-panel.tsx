@@ -27,7 +27,7 @@ import { organizationKind } from '@/lib/organization-logo';
 
 type SaveCell = (rowId: string, columnId: string, cell: Cell) => Promise<void>;
 
-const PROVIDER_NAMES: Record<EmailProvider, string> = { hunter: 'Hunter', prospeo: 'Prospeo', quickenrich: 'QuickEnrich', apollo: 'Apollo', contactout: 'ContactOut' };
+const PROVIDER_NAMES: Record<EmailProvider, string> = { hunter: 'Hunter', prospeo: 'Prospeo', quickenrich: 'QuickEnrich', apollo: 'Apollo', contactout: 'ContactOut', leadmagic: 'LeadMagic' };
 const subscribeNothing = () => () => {};
 const isBusy = (cell: Cell | undefined) => cell?.s === 'running' || cell?.s === 'queued';
 const panelWidth = (document: boolean, wide: boolean) => document ? 'w-[540px]' : wide ? 'w-[440px]' : 'w-[340px]';

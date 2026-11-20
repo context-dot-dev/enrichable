@@ -24,6 +24,8 @@ export function emailCandidate(provider: EmailProvider, raw: unknown): { email: 
   const email = object(person.email);
   return { email: validEmail(email.email) ?? validEmail(person.email), verified: verified(email.status) || verified(person.emailStatus), verificationStatus: string(email.status) || string(person.emailStatus) || 'unknown' };
  }
+ // LeadMagic returns only emails it has already validated; a miss is a 200 with no email.
+ if (provider === 'leadmagic') return { email: validEmail(data.email), verified: verified(data.status), verificationStatus: string(data.status) || 'unknown' };
  if (provider === 'quickenrich') return { email: validEmail(data.email), verified: Boolean(string(data.emailVerifiedUtc) || string(data.email_verification_date)), verificationStatus: string(data.emailVerifiedUtc) || string(data.email_verification_date) ? 'verified' : 'unknown' };
  const profile = object(root.profile ?? data.profile ?? data);
  const contacts = object(profile.contact_info);
@@ -39,6 +41,8 @@ export function sharedRequest(provider: EmailProvider, identity: Identity) {
   case 'hunter': return { provider: 'hunterio', endpoint: '/email-finder', input: { queryParams: { full_name: name, domain, max_duration: 10 } }, boundUsd: 0.0245 };
   case 'apollo': return { provider: 'apollo', endpoint: '/people/match', input: { queryParams: { name, domain, ...(company ? { organization_name: company } : {}), ...(profileUrl ? { linkedin_url: profileUrl } : {}), reveal_personal_emails: false, reveal_phone_number: false } }, boundUsd: 0.026 };
   case 'prospeo': return { provider: 'anyapi', endpoint: '/person_enrichment.prospeo', input: { body: { fullName: name, companyWebsite: domain, ...(profileUrl ? { linkedinUrl: profileUrl } : {}), onlyVerifiedEmail: false, enrichMobile: false } }, boundUsd: 0.066 };
+  // Own key only until the included enrichment service offers LeadMagic.
+  case 'leadmagic': throw new CredentialError('Add your LeadMagic API key in Configuration to use LeadMagic.', 401, 'credential_missing', 'email');
   case 'contactout': return { provider: 'contactout', endpoint: '/v1/people/enrich/work-email', input: { body: { full_name: name, company_domain: [domain], ...(profileUrl ? { linkedin_url: profileUrl } : {}), include: ['work_email'] } }, boundUsd: 0.12 };
  }
 }
@@ -107,6 +111,10 @@ async function directRun(provider: EmailProvider, key: string, identity: Identit
   const [first, ...last] = identity.name.split(/\s+/);
   url.search = new URLSearchParams({ first_name: first, last_name: last.join(' '), company_url: identity.domain, ...(identity.profileUrl ? { linkedin_url: identity.profileUrl } : {}) }).toString();
   headers = { Authorization: `Bearer ${key}` };
+ } else if (provider === 'leadmagic') {
+  url = new URL('https://api.leadmagic.io/v1/people/email-finder');
+  headers = { 'X-API-Key': key, 'Content-Type': 'application/json' };
+  body = { full_name: identity.name, domain: identity.domain, ...(identity.company ? { company_name: identity.company } : {}), ...(identity.profileUrl ? { profile_url: identity.profileUrl } : {}) };
  } else if (provider === 'apollo') {
   url = new URL('https://api.apollo.io/api/v1/people/match');
   headers = { 'X-Api-Key': key, 'Content-Type': 'application/json' };
