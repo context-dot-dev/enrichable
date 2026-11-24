@@ -71,24 +71,28 @@ test('a refused delete reads the first page to tell a newer revision from a dele
 	assert.deepEqual(requests, ['DELETE /api/sheets/shared%2F1?revision=4', 'GET /api/sheets/shared%2F1?offset=0', 'DELETE /api/sheets/shared%2F1?revision=5', 'DELETE /api/sheets/shared%2F1?revision=5', 'GET /api/sheets/shared%2F1?offset=0']);
 });
 
-test('list and create speak the collection endpoint; a failed create is not retried', async (t) => {
+test('the index, a list page and create speak the collection endpoint; a failed create is not retried', async (t) => {
 	let unavailable = false;
-	const requests = api(t, (method, _url, body) => {
+	const page = { sheets: [{ id: 'shared/1', name: 'Shared', revision: 2, createdAt: 0, updatedAt: 0, rowCount: 101, columnCount: 1, aiColumnCount: 0, preview: { columns: [], rows: [] } }], total: 30 };
+	const requests = api(t, (method, url, body) => {
 		if (unavailable) return error(503, 'Workspace temporarily unavailable.');
-		return method === 'POST' ? Response.json({ ...(body as { sheet: Sheet }).sheet, revision: 1 }) : Response.json([{ sheet: sheet(2), rowCount: 101 }]);
+		if (method === 'POST') return Response.json({ ...(body as { sheet: Sheet }).sheet, revision: 1 });
+		return Response.json(url.searchParams.get('view') === 'index' ? { sheets: [{ id: 'shared/1', revision: 2, name: 'Shared', createdAt: 0 }] } : page);
 	});
-	assert.deepEqual(await cloudSheets.list(), [sheet(2)]);
+	assert.deepEqual(await cloudSheets.index(), [{ id: 'shared/1', revision: 2, name: 'Shared', createdAt: 0 }]);
+	assert.deepEqual(await cloudSheets.list(), page);
+	assert.deepEqual(await cloudSheets.list({ search: ' solar & wind ', offset: 24, limit: 24 }), page);
 	assert.equal((await cloudSheets.create({ ...sheet(1), revision: undefined }, rows.slice(0, 1))).revision, 1);
 	unavailable = true;
 	await assert.rejects(cloudSheets.create(sheet(1), []), { status: 503, message: 'Workspace temporarily unavailable.' });
-	assert.deepEqual(requests, ['GET /api/sheets', 'POST /api/sheets', 'POST /api/sheets']);
+	assert.deepEqual(requests, ['GET /api/sheets?view=index', 'GET /api/sheets?offset=0', 'GET /api/sheets?offset=24&limit=24&search=solar+%26+wind', 'POST /api/sheets', 'POST /api/sheets']);
 });
 
 test('responses tell the browser the server’s clock, which running markers are stamped and expired on', async (t) => {
 	const { serverNow } = await import('../src/lib/server-clock');
 	const server = Date.now() - 15 * 60_000;
-	api(t, () => Response.json([], { headers: { date: new Date(server).toUTCString() } }));
-	await cloudSheets.list();
+	api(t, () => Response.json({ sheets: [] }, { headers: { date: new Date(server).toUTCString() } }));
+	await cloudSheets.index();
 	assert.ok(Math.abs(serverNow() - server) < 2_000, 'the local clock is 15 minutes ahead');
 });
 

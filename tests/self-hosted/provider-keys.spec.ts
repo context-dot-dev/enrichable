@@ -1,8 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { Sheet } from '../../src/lib/types';
+import { SHEET_LIST_URL, sheetsResponse } from '../support/sheet-list';
 
 async function mockWorkspace(page: Page) {
- const sheet = { id: 'own-keys', name: 'Own keys', revision: 1, columns: [{ id: 'name', name: 'Name', type: 'source', width: 220, createdAt: 1 }, { id: 'domain', name: 'Company website', type: 'source', width: 220, createdAt: 1 }], filters: [], sort: null, createdAt: 1, updatedAt: 1 };
- await page.route('**/api/sheets', route => route.fulfill({ json: [{ sheet, rowCount: 1 }] }));
+ const sheet: Sheet = { id: 'own-keys', name: 'Own keys', revision: 1, columns: [{ id: 'name', name: 'Name', type: 'source', width: 220, createdAt: 1 }, { id: 'domain', name: 'Company website', type: 'source', width: 220, createdAt: 1 }], filters: [], sort: null, createdAt: 1, updatedAt: 1 };
+ await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url(), [{ sheet, rowCount: 1 }]) }));
  await page.route('**/api/sheets/own-keys*', route => route.fulfill({ json: { sheet, rows: [{ id: 'r1', sheetId: sheet.id, order: 0, createdAt: 1, cells: { name: { v: 'Example Person', s: 'done', t: 1 }, domain: { v: 'example.com', s: 'done', t: 1 } } }], next: null } }));
  // Even unexpected hosted metadata must not expose a funded offer in self-hosted mode.
  await page.route('**/api/keys/verify*', route => route.fulfill({ json: { openai: false, context: false, typesafe: false, passwordRequired: false, openaiTrial: { model: 'gpt-6-luna' }, enrichmentTrial: true } }));

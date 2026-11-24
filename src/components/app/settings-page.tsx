@@ -131,7 +131,7 @@ function LegacySheetsImport() {
 		<section className="glass-card flex flex-col items-start justify-between gap-4 px-5 py-4 sm:flex-row sm:items-center">
 			<div className="flex min-w-0 flex-col gap-0.5"><span className="text-body-sm text-fg">Import my previous local sheets</span><span className="text-caption text-fg-subtle">This browser has sheets saved before workspaces were shared.</span></div>
 			<Button size="sm" onClick={() => setOpen(true)}>Import local sheets</Button>
-			{open && <ConfirmDialog title="Share your local sheets with your workspace?" description="Your previous local sheets are copied to the cloud, where everyone in your workspace can view, edit, and delete them. The 10-sheet and 1,000-row limits apply. Original local copies stay intact." confirmLabel="Import and share" loading={busy} onClose={() => { if (!busy) setOpen(false); }} onConfirm={async () => {
+			{open && <ConfirmDialog title="Share your local sheets with your workspace?" description="Your previous local sheets are copied to the cloud, where everyone in your workspace can view, edit, and delete them. The limits of 1,000 sheets and 1,000 rows per sheet apply. Original local copies stay intact." confirmLabel="Import and share" loading={busy} onClose={() => { if (!busy) setOpen(false); }} onConfirm={async () => {
 				setBusy(true);
 				try { const count = await importMyLocalSheets(); toast(count ? `Imported ${count} sheets` : 'No new local sheets to import.', 'success'); setOpen(false); }
 				catch (cause) { toast(cause instanceof Error ? cause.message : 'Could not import local sheets.', 'error'); }

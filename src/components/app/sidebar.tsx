@@ -3,14 +3,14 @@
 import { CreditsRemaining } from './credits-remaining';
 import { Logo } from '@/components/ui/logo';
 import clsx from 'clsx';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { ChevronDown, LifeBuoy, LogOut, Menu, Settings, Table2, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { GITHUB_URL } from '@/lib/constants';
 import { SELF_HOSTED_ISSUER, type Account } from '@/lib/auth-identity';
-import { db } from '@/lib/db';
+import { sheetIndex } from '@/lib/sheet-index';
+import { sheetListView } from '@/lib/sheet-list-view';
 
 const HELP_URL = `${GITHUB_URL}/blob/main/docs/usage.md`;
 
@@ -42,18 +42,30 @@ function iconClass(active: boolean) {
 	return clsx('size-4 shrink-0 transition-colors', active ? 'text-neutral-80' : 'text-fg-subtle group-hover/link:text-fg-muted');
 }
 
-/** The Sheets link with every sheet listed under it. The list folds away; it starts open. */
+/** How many sheets the sidebar lists. A workspace can hold a thousand; the Sheets page searches and pages them all. */
+const SIDEBAR_SHEETS = 10;
+
+/** The Sheets link with the newest sheets under it, and the open sheet when it is an older one. The list folds away;
+    it starts open. */
 function SheetsNav({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
 	const [open, setOpen] = useState(true);
 	// Newest sheet first, by creation, so editing a sheet never moves it under the pointer.
-	const sheets = useLiveQuery(async () => (await db.sheets.toArray()).sort((a, b) => b.createdAt - a.createdAt || a.name.localeCompare(b.name)), []);
+	const directory = useSyncExternalStore(sheetIndex.subscribe, sheetIndex.getDirectory, sheetIndex.getServerDirectory);
 	const onSheet = pathname.startsWith('/app/sheets/');
+	const sheets = useMemo(() => {
+		const recent = directory.sheets.slice(0, SIDEBAR_SHEETS);
+		const current = onSheet ? directory.sheets.find((sheet) => pathname === `/app/sheets/${sheet.id}`) : undefined;
+		return current && !recent.includes(current) ? [...recent, current] : recent;
+	}, [directory, onSheet, pathname]);
+	const more = directory.sheets.length - sheets.length;
 	// With the list folded, the parent row stands in for whichever sheet is open.
 	const active = pathname === '/app' || (!open && onSheet);
+	// The link shows every sheet; the toolbar's back arrow returns to the search and page the user left.
+	const showAll = () => { sheetListView.reset(); onNavigate(); };
 	return (
 		<div className="flex flex-col gap-0.5">
 			<div className="relative">
-				<Link href="/app" onClick={onNavigate} aria-current={pathname === '/app' ? 'page' : undefined} className={linkClass(active, 'h-11 md:h-8 pr-12 pl-3 md:pr-9')}>
+				<Link href="/app" onClick={showAll} aria-current={pathname === '/app' ? 'page' : undefined} className={linkClass(active, 'h-11 md:h-8 pr-12 pl-3 md:pr-9')}>
 					<Table2 className={iconClass(active)} strokeWidth={1.75} />
 					<span className="min-w-0 flex-1 truncate">Sheets</span>
 				</Link>
@@ -62,8 +74,8 @@ function SheetsNav({ pathname, onNavigate }: { pathname: string; onNavigate: () 
 				</button>
 			</div>
 			<ul id="sidebar-sheets" hidden={!open} className="flex flex-col gap-0.5">
-				{sheets?.length === 0 && <li className="py-1.5 pr-2 pl-[38px] text-caption text-fg-subtle">No sheets yet</li>}
-				{sheets?.map((sheet) => {
+				{directory.ready && sheets.length === 0 && <li className="py-1.5 pr-2 pl-[38px] text-caption text-fg-subtle">No sheets yet</li>}
+				{sheets.map((sheet) => {
 					const href = `/app/sheets/${sheet.id}`;
 					const current = pathname === href;
 					return (
@@ -74,6 +86,13 @@ function SheetsNav({ pathname, onNavigate }: { pathname: string; onNavigate: () 
 						</li>
 					);
 				})}
+				{more > 0 && (
+					<li className="min-w-0">
+						<Link href="/app" onClick={showAll} className="flex h-11 items-center rounded-lg pr-2 pl-[38px] text-caption text-fg-subtle transition-colors duration-150 hover:bg-tint/[0.04] hover:text-fg md:h-7">
+							<span className="min-w-0 flex-1 truncate">All {directory.sheets.length.toLocaleString()} sheets</span>
+						</Link>
+					</li>
+				)}
 			</ul>
 		</div>
 	);

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { ColumnOp, Row, Sheet } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 async function mockSheet(page: Page) {
 	const state: { sheet: Sheet; enriched: number } = { sheet: { id: 'lists', name: 'Accounts', revision: 1, columns: [{ id: 'company', name: 'Company', type: 'source', width: 220, createdAt: 1 }], filters: [], sort: null, createdAt: 1, updatedAt: 1 }, enriched: 0 };
@@ -15,7 +16,7 @@ async function mockSheet(page: Page) {
 			state.sheet = { ...route.request().postDataJSON().sheet, revision: state.sheet.revision! + 1 };
 			return route.fulfill({ json: { revision: state.sheet.revision, updatedAt: Date.now() } });
 		}
-		await route.fulfill({ json: new URL(route.request().url()).pathname === '/api/sheets' ? [{ sheet: state.sheet, rowCount: rows.length }] : { sheet: state.sheet, rows, next: null } });
+		await route.fulfill({ json: new URL(route.request().url()).pathname === '/api/sheets' ? sheetsResponse(route.request().url(), [{ sheet: state.sheet, rows }]) : { sheet: state.sheet, rows, next: null } });
 	});
 	return state;
 }

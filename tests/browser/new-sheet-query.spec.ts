@@ -18,7 +18,7 @@ test.afterEach(async ({ page }) => { expect(await page.pageErrors()).toEqual([])
 
 test('the empty Sheets page is one composer: nothing is created until the prompt is sent', async ({ page }) => {
 	await connected(page, []);
-	await expect(page.getByText('0 / 10 sheets')).toBeVisible();
+	await expect(page.getByText('0 sheets', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'New sheet', exact: true })).toHaveCount(0);
 	for (const entity of ['companies', 'people', 'websites']) {
 		await page.getByRole('radio', { name: entity, exact: false }).click();
@@ -29,7 +29,7 @@ test('the empty Sheets page is one composer: nothing is created until the prompt
 	await expect(page.getByRole('alert')).toHaveText('Only 100 at a time. Ask for 100 or fewer.');
 	await expect(page.getByRole('button', { name: 'Find companies', exact: true })).toBeDisabled();
 	await page.reload();
-	await expect(page.getByText('0 / 10 sheets')).toBeVisible();
+	await expect(page.getByText('0 sheets', { exact: true })).toBeVisible();
 	await expect(page.getByRole('list', { name: 'Sheets' })).toHaveCount(0);
 });
 
@@ -49,7 +49,7 @@ test('Find rows names the new sheet from the prompt and streams rows into it', a
 	expect(requests).toHaveLength(1);
 	expect(requests[0]).toMatchObject({ entity: 'companies', target: 50 });
 	await page.goto('/app');
-	await expect(page.getByText('1 / 10 sheets')).toBeVisible();
+	await expect(page.getByText('1 sheet', { exact: true })).toBeVisible();
 	await expect(page.getByRole('list', { name: 'Sheets' }).getByText('Solar installers in Texas')).toBeVisible();
 });
 
@@ -76,7 +76,7 @@ test('a search with no matches reopens Find rows with the prompt kept, and closi
 	await expect(dialog.getByRole('radio', { name: 'People', exact: false })).toBeChecked();
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 	await expect(page).toHaveURL(/\/app$/);
-	await expect(page.getByText('0 / 10 sheets')).toBeVisible();
+	await expect(page.getByText('0 sheets', { exact: true })).toBeVisible();
 });
 
 test('a rejected key is caught before a sheet exists, with the fix in place', async ({ page }) => {
@@ -89,7 +89,7 @@ test('a rejected key is caught before a sheet exists, with the fix in place', as
 	await expect(page.getByRole('alert')).toContainText('Context.dev rejected this key.');
 	await expect(page.getByRole('link', { name: 'Open Connections', exact: true })).toBeVisible();
 	await expect(page).toHaveURL(/\/app$/);
-	await expect(page.getByText('0 / 10 sheets')).toBeVisible();
+	await expect(page.getByText('0 sheets', { exact: true })).toBeVisible();
 });
 
 test('a failed search offers the same fix as a paused run', async ({ page }) => {

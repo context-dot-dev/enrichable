@@ -18,8 +18,8 @@ async function companySheet(page: Page, enriched = false) {
 		await page.evaluate(async () => {
    const session = await fetch('/api/auth/session').then((response) => response.json());
    const headers = { 'content-type': 'application/json', 'x-enrichable-account': session.partition, 'x-enrichable-session': session.sessionId };
-   const entries = await fetch('/api/sheets', { headers }).then((response) => response.json());
-   const sheet = entries[0].sheet;
+   const index = await fetch('/api/sheets?view=index', { headers }).then((response) => response.json());
+   const { sheet } = await fetch(`/api/sheets/${index.sheets[0].id}`, { headers }).then((response) => response.json());
    sheet.columns[0] = { ...sheet.columns[0], name: 'Legal name', type: 'enriched', op: { kind: 'company', domain: '{{Company domain}}', field: 'title' } };
    const response = await fetch(`/api/sheets/${sheet.id}`, { method: 'PATCH', headers, body: JSON.stringify({ revision: sheet.revision, sheet, rows: [], deleted: [] }) });
    if (!response.ok) throw new Error('Could not configure the test company column.');
@@ -67,8 +67,8 @@ test('waits for three characters and 400ms of idle typing, previews logos, and p
 	await expect.poll(() => page.evaluate(async () => {
   const session = await fetch('/api/auth/session').then((response) => response.json());
   const headers = { 'x-enrichable-account': session.partition, 'x-enrichable-session': session.sessionId };
-  const entries = await fetch('/api/sheets', { headers }).then((response) => response.json());
-  const data = await fetch(`/api/sheets/${entries[0].sheet.id}`, { headers }).then((response) => response.json());
+  const index = await fetch('/api/sheets?view=index', { headers }).then((response) => response.json());
+  const data = await fetch(`/api/sheets/${index.sheets[0].id}`, { headers }).then((response) => response.json());
   return Object.values(data.rows[0].cells).some((cell) => (cell as { v?: unknown }).v === 'Stripe');
  })).toBe(true);
 	await page.reload();

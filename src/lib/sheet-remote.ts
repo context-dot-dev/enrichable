@@ -1,3 +1,4 @@
+import type { SheetIndexEntry, SheetListQuery, SheetPage } from './sheet-summary';
 import type { Row, Sheet } from './types';
 
 /** A whole sheet as the workspace stored it at one revision (`sheet.revision`). */
@@ -7,17 +8,19 @@ export type SheetSnapshot = { sheet: Sheet; rows: Row[] };
 export type SheetPatch = { revision: number; sheet: Sheet; rows: Row[]; deleted: string[] };
 
 /**
- * The workspace's copy of its sheets, which db.ts caches in IndexedDB and commits every change to. Each write names the
- * revision it was made against; a sheet that has moved on refuses it, and the writer reads the sheet again and redoes
- * its change. Written values pass Admission again, whoever wrote them. Other refusals throw a CloudError with the
+ * The workspace's copy of its sheets. db.ts caches the ones this browser opened in IndexedDB and commits every change
+ * here. Each write names the revision it was made against; a sheet that has moved on refuses it, and the writer reads
+ * the sheet again and redoes its change. Written values pass Admission again, whoever wrote them. Other refusals throw a CloudError with the
  * workspace API's status: 400 invalid, 404 gone (writes only), 413 too large, 422 over a quota or a value its column
  * cannot hold, 503 unavailable.
  *
  * Adapters: `cloudSheets` (sheet-cloud.ts, /api/sheets) in the browser; an in-memory workspace in tests.
  */
 export interface SheetRemote {
-	/** Every sheet's metadata at its current revision. */
-	list(): Promise<Sheet[]>;
+	/** Every sheet's index entry at its current revision: the whole workspace, without definitions or rows. */
+	index(): Promise<SheetIndexEntry[]>;
+	/** One page of sheet summaries, most recently edited first; `search` keeps the sheets whose name contains it. */
+	list(query?: SheetListQuery): Promise<SheetPage>;
 	/** The whole sheet at one revision, or null once the workspace no longer has it. */
 	read(sheetId: string): Promise<SheetSnapshot | null>;
 	/** Stores a new sheet with its rows and returns it as stored, at revision 1. */

@@ -48,7 +48,7 @@ The browser's people-list flow uses the same lookup helper. Named lists enrich t
 
 | Tool | Behavior |
 | --- | --- |
-| `list_sheets` | Lists compact summaries with column names/IDs, revisions, row counts, and app links. Set `includeDefinitions: true` for full definitions. |
+| `list_sheets` | Lists compact summaries with column names/IDs, revisions, row counts, and app links, most recently edited first. Returns 50 sheets per call (`limit` up to 100) with `total` and `nextOffset`; pass `search` to match sheet names and `offset` to continue. Set `includeDefinitions: true` for full definitions. |
 | `get_sheet` | Returns columns, revision, up to 100 rows, a relative app URL, and `nextOffset`. Pin subsequent pages to the first revision. |
 | `create_sheet` | The single spreadsheet-creation tool: choose `template: "blank" | "companies" | "people" | "websites"` to reuse app layouts, or supply complete custom `columns`. Optional `enrichments` configure built-in operations immediately; matching preset column names are replaced, other names appended. Repeating a matching definition returns the existing sheet. Creation does not execute provider calls. |
 | `upsert_rows` | Inserts or partially updates up to 100 rows using caller-supplied stable row IDs. Cell maps use column IDs. |
@@ -59,7 +59,7 @@ The browser's people-list flow uses the same lookup helper. Named lists enrich t
 | `get_cell_details` | Returns the saved cell, including status, sources, reasoning, confidence, timing, and errors when present. |
 | `enrich_cells` | Runs up to five rows in one enrichment column, sequentially, and saves each result. Finished cells are skipped unless `overwrite: true`; each skipped outcome says `outdated: true` or `false`. |
 
-Row/cell/column mutations and deletions require the current sheet revision. A conflict means the agent must reread the sheet and reconsider its edit. Caller-provided values are literals, including strings beginning with `=`. Existing workspace limits of 10 sheets and 1,000 rows per sheet apply.
+Row/cell/column mutations and deletions require the current sheet revision. A conflict means the agent must reread the sheet and reconsider its edit. Caller-provided values are literals, including strings beginning with `=`. Existing workspace limits of 1,000 sheets and 1,000 rows per sheet apply.
 
 A sheet saved by an older version is upgraded the first time an agent reads it, as the browser upgrades it when it opens: a website column still named Domain becomes Website, and references to it follow, so `{{Website}}` and repeated `create_sheet` calls match. The upgrade advances the revision once. Sheets with formulas are upgraded by the browser instead.
 

@@ -13,7 +13,7 @@ No auth migration is needed. The existing Context.dev organization identity or p
 
 ## Behavior
 
-- One multiplexed WebSocket per browser tab, with a workspace metadata subscription and data/presence subscriptions for the open sheet.
+- One multiplexed WebSocket per browser tab, with a subscription to the workspace's sheet index (each sheet's ID, name, creation time and revision) and data/presence subscriptions for the open sheet.
 - Inserts, edits, row deletions, column changes, sheet renames/deletions, formula results, and saved enrichment results appear automatically. Existing formulas are calculated through the normal browser write path; receiving a remote result does not create another write or undo entry.
 - Row data and sheet revision are selected together with a UNION query, so committed transaction updates become visible atomically. Newer acknowledged local revisions take priority over older live snapshots.
 - Incoming bursts are coalesced before cache updates. Only changed rows are written to IndexedDB; the SDK transfers incremental query changes rather than repeatedly downloading an entire sheet.
@@ -30,7 +30,7 @@ Presence writes validate that the sheet, row, and column belong to the authentic
 
 ## Cost controls
 
-Normal sheet polling stops while live subscriptions are healthy. Only open-sheet row data is subscribed to; the sidebar uses metadata. Renewal signs capabilities locally and does not query Postgres. Active presence sends a small heartbeat every 20 seconds, with selection changes debounced. Hidden tabs stop publishing, and a tab with no keyboard/pointer interaction for two minutes leaves presence while its data subscription can stay live. Presence therefore adds writes while users actively collaborate, but does not require keeping idle sessions alive forever.
+Normal sheet polling stops while live subscriptions are healthy. Only open-sheet row data is subscribed to. The sheet index stays one small row per sheet however many sheets a workspace holds: the sidebar reads it, and the Sheets list re-reads its current page from `/api/sheets` (at most every two seconds) when the index changes. Renewal signs capabilities locally and does not query Postgres. Active presence sends a small heartbeat every 20 seconds, with selection changes debounced. Hidden tabs stop publishing, and a tab with no keyboard/pointer interaction for two minutes leaves presence while its data subscription can stay live. Presence therefore adds writes while users actively collaborate, but does not require keeping idle sessions alive forever.
 
 Realtime service charges are currently waived during Neon's beta; database compute and egress are still subject to the Neon plan. Future Realtime pricing is not guaranteed. Keep the polling fallback available.
 

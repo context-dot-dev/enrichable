@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
+import { SHEET_LIST_URL, sheetsResponse } from '../support/sheet-list';
 
 test('hosted limits keep Context.dev visible as a static meter and reveal trial balances on demand', async ({ page, context, baseURL }) => {
 	await context.addCookies([{ name: 'enrichable.session', value: memberCookie('browser-user'), url: baseURL!, httpOnly: true, sameSite: 'Lax' }]);
 	await page.route('**/api/organization-settings', route => route.fulfill({ json: { local: true } }));
 	await page.route('**/api/keys/verify*', route => route.fulfill({ json: { openai: true, openaiTrial: { model: 'gpt-6-luna' }, enrichmentTrial: true, context: true, contextConnected: true } }));
-	await page.route('**/api/sheets', route => route.fulfill({ json: [] }));
+	await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url()) }));
 	await page.route('**/api/context/usage', route => route.fulfill({ json: { credits: 7200, used: 2800 } }));
 	let remainingUsd = 0.58;
 	await page.route('**/api/openai/usage', route => route.fulfill({ json: { enabled: true, grantedUsd: 1, remainingUsd, deploymentAvailable: true } }));

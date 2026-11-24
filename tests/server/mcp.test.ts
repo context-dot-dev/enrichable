@@ -46,7 +46,7 @@ test('one shared organization key: hashed storage, concurrent creation, rotation
 	await seed(new McpOperations(sheets, keys, authenticated, credentials));
 	const other = await keys.issueKey(actor('two'));
 	const stranger = await keys.authenticate(`Bearer ${other.secret}`);
-	assert.deepEqual(await sheets.list(stranger), []);
+	assert.deepEqual(await sheets.index(stranger), []);
 	await assert.rejects(sheets.get(stranger, 'companies'), /not found/);
 	const replacement = await keys.issueKey(actor('one', 'bob'), first.version);
 	await assert.rejects(keys.authenticate(`Bearer ${first.secret}`), /Invalid/);
@@ -85,7 +85,7 @@ test('sheet tools preserve partial edits, validate revisions, reject cycles and 
 	await sheets.patch(actor(), 'companies', { revision: 5, sheet: snapshot.sheet, rows: [{ ...snapshot.rows[0], cells: { ...snapshot.rows[0].cells, domain: { v: 2, f: '=1+1', s: 'done', t: 1 } } }], deleted: [] });
 	await assert.rejects(ops.call('update_cells', { sheetId: 'companies', revision: 6, cells: [{ rowId: 'r1', columnId: 'domain', value: 3 }] }), /formulas/);
 	await ops.call('delete_sheet', { sheetId: 'companies', revision: 6 });
-	assert.deepEqual(await sheets.list(actor()), []);
+	assert.deepEqual(await sheets.index(actor()), []);
 });
 
 test('bounded enrichment persists evidence, blocks dependencies, skips completed cells, and replays without spending again', async (t) => {
@@ -445,6 +445,16 @@ test('one create_sheet tool reuses app layouts, merges built-in enrichments, val
 	assert.equal('op' in (summary.columns[0] as object), false);
 	const detailed = await ops.call('list_sheets', { includeDefinitions: true });
 	assert.ok((detailed.sheets as { sheet: { id: string } }[]).some((entry) => entry.sheet.id === 'builtins'));
+	// A workspace can hold a thousand sheets, so agents search and page through them.
+	assert.deepEqual([listed.total, listed.nextOffset], [(listed.sheets as unknown[]).length, null]);
+	await ops.call('create_sheet', { sheetId: 'paged', name: 'Paged list' });
+	const first = await ops.call('list_sheets', { limit: 1 });
+	assert.deepEqual([(first.sheets as { id: string }[]).map((entry) => entry.id), first.total, first.nextOffset], [['paged'], (listed.total as number) + 1, 1]);
+	const second = await ops.call('list_sheets', { limit: 1, offset: first.nextOffset });
+	assert.notEqual((second.sheets as { id: string }[])[0].id, 'paged');
+	const found = await ops.call('list_sheets', { search: 'PAGED' });
+	assert.deepEqual([(found.sheets as { id: string }[]).map((entry) => entry.id), found.total, found.nextOffset], [['paged'], 1, null]);
+	await assert.rejects(ops.call('list_sheets', { limit: 101 }), /Invalid|too_big|100/i);
 	await assert.rejects(ops.call('create_sheet', { sheetId: 'invalid-preset', name: 'Invalid', template: 'companies', enrichments: [{ id: 'bad', name: 'Bad', op: { kind: 'template', template: '{{Unknown}}' } }] }), /Unresolved/);
 	await assert.rejects(ops.call('create_sheet', { sheetId: 'duplicate-enrichments', name: 'Invalid', enrichments: [{ id: 'a', name: 'Greeting', op: { kind: 'template', template: 'A' } }, { id: 'b', name: 'Greeting', op: { kind: 'template', template: 'B' } }] }), /must be unique/);
 });

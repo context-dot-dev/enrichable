@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { Sheet, Row } from '../../src/lib/types';
 import { readFile } from 'node:fs/promises';
+import { sheetsResponse } from '../support/sheet-list';
 
 test('document chips open a Markdown preview, edit, and download a client PDF', async ({ page, context, baseURL }) => {
  await context.addCookies([{ name: 'enrichable.session', value: memberCookie('document-test'), url: baseURL!, httpOnly: true, sameSite: 'Lax' }]);
@@ -26,7 +27,7 @@ test('document chips open a Markdown preview, edit, and download a client PDF', 
    const body = request.postDataJSON(); sheet = { ...body.sheet, revision: sheet.revision! + 1 };
    const updates = new Map<string, Row>(body.rows.map((row: Row) => [row.id, row])); rows = rows.map((row) => updates.get(row.id) ?? row);
    await route.fulfill({ json: { revision: sheet.revision, updatedAt: Date.now() } });
-  } else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: [{ sheet, rowCount: rows.length }] });
+  } else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: sheetsResponse(request.url(), [{ sheet, rows }]) });
   else await route.fulfill({ json: { sheet, rows, next: null } });
  });
  await page.goto(`/app/sheets/${sheet.id}`);

@@ -240,8 +240,6 @@ export interface Sort {
 }
 
 export interface Sheet {
-	/** Local-only list summary from the live metadata subscription; never persisted by the API. */
-	cloudSummary?: { revision: number; rowCount: number; rows: Row[] };
 	id: string;
 	revision?: number;
 	name: string;

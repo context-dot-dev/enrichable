@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { invalidCell, redefinedColumns } from '../../src/lib/cell-admission';
 import { CloudError, type SheetPatch, type SheetRemote, type SheetSnapshot } from '../../src/lib/sheet-remote';
-import { createSheetSchema, MAX_ROWS, MAX_SHEETS, patchSheetSchema } from '../../src/lib/workspace';
+import { indexEntry, PREVIEW_COLUMNS, PREVIEW_ROWS, summarizeSheet, type SheetListQuery } from '../../src/lib/sheet-summary';
+import { createSheetSchema, MAX_ROWS, MAX_SHEETS, patchSheetSchema, sheetListSchema } from '../../src/lib/workspace';
 import type { Row, Sheet } from '../../src/lib/types';
 
 export type RemoteCall =
-	| { method: 'list' }
+	| { method: 'index' }
+	| { method: 'list'; query: SheetListQuery }
 	| { method: 'read'; sheetId: string }
 	| { method: 'create'; sheet: Sheet; rows: Row[] }
 	| { method: 'patch'; patch: SheetPatch }
@@ -38,8 +40,9 @@ function admissionProblem(stored: SheetSnapshot, patch: { sheet: Sheet; rows: Ro
 
 /**
  * A workspace in memory behind the SheetRemote seam, with the rules of WorkspaceStore behind /api/sheets: revisions,
- * the sheet and row quotas, rows owned by one sheet, and Admission of written values. It stores what the server would:
- * input parsed by the server's schemas. tests/server/sheet-remote-contract.test.ts holds it to WorkspaceStore.
+ * the sheet and row quotas, rows owned by one sheet, Admission of written values, and the paged, searched sheet list.
+ * It stores what the server would: input parsed by the server's schemas. tests/server/sheet-remote-contract.test.ts
+ * holds it to WorkspaceStore.
  */
 export class MemoryRemote implements SheetRemote {
 	private sheets = new Map<string, SheetSnapshot>();
@@ -56,9 +59,16 @@ export class MemoryRemote implements SheetRemote {
 		return new Map([...this.sheets.values()].flatMap(({ sheet, rows }) => rows.map((row) => [row.id, sheet.id] as const)));
 	}
 
-	async list() {
-		await this.receive({ method: 'list' });
-		return [...this.sheets.keys()].sort().map((id) => structuredClone(this.sheets.get(id)!.sheet));
+	async index() {
+		await this.receive({ method: 'index' });
+		return [...this.sheets.values()].map(({ sheet }) => indexEntry(sheet));
+	}
+	async list(query: SheetListQuery = {}) {
+		await this.receive({ method: 'list', query });
+		const { search, offset, limit } = parse(sheetListSchema, query);
+		const matching = [...this.sheets.values()].filter(({ sheet }) => sheet.name.toLowerCase().includes(search.toLowerCase())).sort((a, b) => b.sheet.updatedAt - a.sheet.updatedAt || (a.sheet.id < b.sheet.id ? -1 : 1));
+		const sheets = matching.slice(offset, offset + limit).map(({ sheet, rows }) => summarizeSheet(sheet, rows.length, rows.slice(0, PREVIEW_ROWS).map((row) => sheet.columns.slice(0, PREVIEW_COLUMNS).map((column) => row.cells[column.id]?.v ?? null))));
+		return structuredClone({ sheets, total: matching.length });
 	}
 	async read(sheetId: string) {
 		await this.receive({ method: 'read', sheetId });
@@ -68,7 +78,7 @@ export class MemoryRemote implements SheetRemote {
 		await this.receive({ method: 'create', sheet, rows });
 		const input = parse(createSheetSchema, { sheet, rows });
 		checkRows(input.sheet, input.rows);
-		if (this.sheets.size >= MAX_SHEETS) throw new CloudError(`This workspace can have up to ${MAX_SHEETS} sheets. Delete a sheet to create another.`, 422);
+		if (this.sheets.size >= MAX_SHEETS) throw new CloudError(`This workspace can have up to ${MAX_SHEETS.toLocaleString('en-US')} sheets. Delete a sheet to create another.`, 422);
 		if (this.sheets.has(input.sheet.id)) throw new CloudError('This sheet already exists.', 409);
 		const owners = this.owners();
 		if (input.rows.some((row) => owners.has(row.id))) throw new CloudError('A row ID is already used by another sheet.', 409);
@@ -121,6 +131,6 @@ export class MemoryRemote implements SheetRemote {
 	drop(sheetId: string) { this.sheets.delete(sheetId); }
 	/** What the realtime index query delivers for this workspace. */
 	liveIndex() {
-		return [...this.sheets.values()].map(({ sheet, rows }) => ({ id: sheet.id, revision: sheet.revision!, data: structuredClone(sheet), row_count: rows.length, preview_rows: structuredClone(rows.slice(0, 3)) }));
+		return [...this.sheets.values()].map(({ sheet }) => ({ id: sheet.id, revision: sheet.revision!, name: sheet.name, created_at: sheet.createdAt }));
 	}
 }

@@ -10,6 +10,9 @@ import Dexie, { type EntityTable } from 'dexie';
 import { nanoid } from 'nanoid';
 import { accountStorageKey } from './account-storage';
 import { CloudError, type SheetRemote, type SheetSnapshot } from './sheet-remote';
+import { sheetIndex } from './sheet-index';
+import { indexEntry, type SheetIndexEntry, type SheetListQuery } from './sheet-summary';
+import type { IndexRow } from './workspace-realtime';
 import { MAX_ROWS, MAX_SHEETS, SHEET_DATA_VERSION } from './workspace';
 import { calculateInWorker } from './formula-worker-client';
 import { upgradeGrid } from './sheet-upgrade';
@@ -17,7 +20,6 @@ import { nameTaken, shiftColumnReferences } from './references';
 import { assertNoEnrichmentCycles } from './enrichment-dependencies';
 import type { Cell, CellMeta, CellValue, Column, ColumnOp, ColumnFormat, PopulateRequest, Row, Sheet } from './types';
 import { decodeLiveSheet, type LiveSheetEntry } from './collaboration';
-import { sheetSchema, rowSchema } from './workspace';
 
 class EnrichableDB extends Dexie {
 	sheets!: EntityTable<Sheet, 'id'>;
@@ -32,7 +34,8 @@ class EnrichableDB extends Dexie {
 	}
 }
 
-/** The IndexedDB cache of the workspace's sheets. Every change commits to the workspace (`SheetRemote`) first. */
+/** The IndexedDB cache of the sheets this browser opened, rows included. Every change commits to the workspace
+    (`SheetRemote`) first. Which sheets exist at all is the sheet index's to say (sheet-index.ts). */
 export let db = new EnrichableDB();
 let remote: SheetRemote | undefined;
 let workspacePending: Promise<unknown> = Promise.resolve();
@@ -62,6 +65,7 @@ async function removeLocalSheets(sheetIds: string[]) {
 		await db.sheets.bulkDelete(sheetIds);
 	});
 	for (const sheetId of sheetIds) {
+		sheetIndex.remove(sheetId);
 		sheetHistory.clear(sheetId);
 		for (const listener of removedListeners) listener(sheetId);
 	}
@@ -83,6 +87,7 @@ async function cacheSnapshot({ sheet, rows }: SheetSnapshot, newerOnly = false) 
 		if (changed.length) await db.rows.bulkPut(changed);
 		await db.sheets.put(sheet);
 	});
+	sheetIndex.note(indexEntry(sheet));
 }
 
 /** Cache the workspace's copy of a sheet. A cache miss is not proof that a sheet is gone; the workspace saying so is,
@@ -101,37 +106,39 @@ async function refreshSheet(sheetId: string) {
 	await cacheSnapshot(snapshot);
 }
 
-/** A list can be stale relative to a sheet created or restored in another tab: read a cached sheet it lacks, and drop it
-    only if the workspace no longer has it. */
-async function dropUnlisted(listed: ReadonlySet<string>, except?: string) {
-	for (const sheet of await db.sheets.toArray()) if (!listed.has(sheet.id) && sheet.id !== except) await syncSheet(sheet.id);
+/** Whether the cached copy is the workspace's latest known revision. One that is behind, or was never loaded with its
+    rows, loads before it is shown or edited. */
+export function sheetCurrent(sheet: Sheet) {
+	return sheet.revision !== undefined && (sheetIndex.get(sheet.id)?.revision ?? 0) <= sheet.revision;
 }
 
-/**
- * A shared sheet can be known only from the live index (no rows cached), or have a newer server revision
- * than the cached rows. Both must load before they are shown or edited.
- */
-export type SheetSync = 'index-only' | 'stale' | 'synced';
-export function sheetSync(sheet: Sheet): SheetSync {
-	if (sheet.revision === undefined) return 'index-only';
-	return (sheet.cloudSummary?.revision ?? sheet.revision) > sheet.revision ? 'stale' : 'synced';
+const watched = new Map<string, number>();
+/** A sheet open in this tab. Polling reloads it when the workspace moves on; every other cached sheet waits until it
+    is opened. Returns unwatch. */
+export function watchSheet(sheetId: string) {
+	watched.set(sheetId, (watched.get(sheetId) ?? 0) + 1);
+	return () => { const left = watched.get(sheetId)! - 1; if (left > 0) watched.set(sheetId, left); else watched.delete(sheetId); };
 }
-const behind = (sheet: Sheet | undefined) => Boolean(sheet && sheetSync(sheet) !== 'synced');
 
 export function openAccountDatabase() {
 	const name = accountStorageKey('enrichable.cloud');
 	if (db.name === name) return;
 	db.close();
 	db = new EnrichableDB(name);
+	sheetIndex.reset();
 }
 
-/** Commit every change to `workspace` (`cloudSheets` in the browser) and load its sheets into the cache. */
+/** Follow `workspace` (`cloudSheets` in the browser): load its sheet index and commit every change to it. Rows load
+    when a sheet is opened. */
 export async function connectWorkspace(workspace: SheetRemote) {
 	remote = workspace;
 	await refreshWorkspace();
 }
 
 export function refreshWorkspace() { return inWorkspaceOrder(refreshWorkspaceNow); }
+
+/** One page of the workspace's sheets for the Sheets list, searched and ordered by the workspace itself. */
+export function listSheets(query: SheetListQuery) { return connected().list(query); }
 
 /** Apply a complete materialized live result, preserving newer local acknowledgments. */
 export function applyLiveSheet(sheetId: string, entries: readonly LiveSheetEntry[]) {
@@ -142,33 +149,42 @@ export function applyLiveSheet(sheetId: string, entries: readonly LiveSheetEntry
 	});
 }
 
-/** Sidebar metadata is live; unopened sheet rows are loaded when the sheet is opened. */
-export function applyLiveIndex(entries: readonly { id: string; revision: number; data: unknown; row_count: number; preview_rows: unknown[] }[], activeSheetId?: string) {
-	return inWorkspaceOrder(async () => {
-		const parsed = entries.map((entry) => ({ ...sheetSchema.parse(entry.data), revision: Number(entry.revision), cloudSummary: { revision: Number(entry.revision), rowCount: Number(entry.row_count), rows: entry.preview_rows.map((row) => rowSchema.parse(row)) } }));
-		const cached = await db.sheets.bulkGet(parsed.map((sheet) => sheet.id));
-		// Keep each cached revision with its rows: sheetSync() then reports the sheet behind until it is loaded.
-		const changed = parsed.flatMap((sheet, index) => {
-			const current = cached[index];
-			if (sheet.id === activeSheetId) return [];
-			if (!current) return [{ ...sheet, revision: undefined }];
-			return (current.revision ?? 0) < sheet.revision ? [{ ...sheet, revision: current.revision }] : [];
-		});
-		if (changed.length) await db.sheets.bulkPut(changed);
-		await dropUnlisted(new Set(parsed.map((sheet) => sheet.id)), activeSheetId);
-	});
+/** The live sheet index. The open sheet follows its own subscription, so nothing is reloaded here. */
+export function applyLiveIndex(rows: readonly IndexRow[]) {
+	return inWorkspaceOrder(() => applyIndex(rows.map((row) => ({ id: String(row.id), revision: Number(row.revision), name: String(row.name), createdAt: Number(row.created_at) })), false));
+}
+
+/**
+ * Take the workspace's sheet index. An index can be older than a sheet this browser just created or restored, so a
+ * cached sheet it lacks keeps its entry until the workspace itself says the sheet is gone; only then is the cached
+ * copy dropped. With `reload`, the sheets open in this tab that fell behind are read again.
+ */
+async function applyIndex(listed: SheetIndexEntry[], reload: boolean) {
+	const ids = new Set(listed.map((entry) => entry.id));
+	const unlisted = (await db.sheets.toCollection().primaryKeys()).filter((sheetId) => !ids.has(sheetId));
+	sheetIndex.replace([...listed, ...unlisted.flatMap((sheetId) => sheetIndex.get(sheetId) ?? [])]);
+	for (const sheetId of unlisted) await syncSheet(sheetId);
+	if (!reload) return;
+	for (const sheetId of [...watched.keys()]) {
+		const cached = await db.sheets.get(sheetId);
+		if (cached && !sheetCurrent(cached)) await syncSheet(sheetId);
+	}
 }
 
 async function refreshWorkspaceNow() {
-	const listed = await connected().list();
-	const cached = await db.sheets.bulkGet(listed.map((sheet) => sheet.id));
-	// One sheet at a time: each read pages through up to 1,000 rows.
-	for (const [position, sheet] of listed.entries()) if (cached[position]?.revision !== sheet.revision) await refreshSheet(sheet.id);
-	await dropUnlisted(new Set(listed.map((sheet) => sheet.id)));
+	await applyIndex(await connected().index(), true);
 }
 
+const loading = new Map<string, Promise<boolean>>();
+/** Read a sheet with its rows into the cache; false once the workspace no longer has it. Callers that ask while the
+    same sheet is already loading share that read, so opening a sheet downloads it once. */
 export function loadSheet(sheetId: string): Promise<boolean> {
-	return inWorkspaceOrder(() => syncSheet(sheetId));
+	let pending = loading.get(sheetId);
+	if (!pending) {
+		pending = inWorkspaceOrder(() => syncSheet(sheetId)).finally(() => { if (loading.get(sheetId) === pending) loading.delete(sheetId); });
+		loading.set(sheetId, pending);
+	}
+	return pending;
 }
 
 export const id = () => nanoid(12);
@@ -177,14 +193,14 @@ export function newColumn(input: { name: string; type: Column['type']; op?: Colu
 	return { id: id(), name: input.name, type: input.type, op: input.op, width: input.width ?? (input.type === 'enriched' ? 220 : 180), format: input.format ?? inferredFormat(input), categoryOptions: input.categoryOptions, categoryColors: input.categoryColors, currency: input.currency, unit: input.unit, useGrouping: input.useGrouping, decimalPlaces: input.decimalPlaces, dateFormat: input.dateFormat, createdAt: Date.now() };
 }
 
-export const SHEET_LIMIT_MESSAGE = `Your workspace can have up to ${MAX_SHEETS} sheets. Delete a sheet to create another.`;
+export const SHEET_LIMIT_MESSAGE = `Your workspace can have up to ${MAX_SHEETS.toLocaleString()} sheets. Delete a sheet to create another.`;
 
 /** Rows (with this sheet's `id`) and the populate request are created in the same request as the sheet. */
 export async function createSheet(name?: string, columns: Column[] = [], initial: { id?: string; rows?: Row[]; populate?: PopulateRequest } = {}): Promise<Sheet> {
 	return inWorkspaceOrder(async () => {
-		if (await db.sheets.count() >= MAX_SHEETS) throw new Error(SHEET_LIMIT_MESSAGE);
+		if (sheetIndex.size >= MAX_SHEETS) throw new Error(SHEET_LIMIT_MESSAGE);
 		if (name === undefined) {
-			const names = new Set((await db.sheets.toArray()).map((sheet) => sheet.name));
+			const names = new Set(sheetIndex.names());
 			name = 'Untitled';
 			for (let suffix = 2; names.has(name); suffix++) name = `Untitled ${suffix}`;
 		}
@@ -194,6 +210,7 @@ export async function createSheet(name?: string, columns: Column[] = [], initial
 			await db.sheets.add(sheet);
 			if (rows.length) await db.rows.bulkAdd(rows);
 		});
+		sheetIndex.note(indexEntry(sheet));
 		return sheet;
 	});
 }
@@ -221,18 +238,20 @@ export async function createSheetFromRecords(name: string, records: Record<strin
 }
 
 export async function updateSheet(sheetId: string, patch: Partial<Sheet> | ((sheet: Sheet) => Partial<Sheet>), options: { history?: boolean } = {}) {
-	// The Sheets list can rename a sheet it knows only from the live index; edit its current revision.
-	await inWorkspaceOrder(async () => { if (behind(await db.sheets.get(sheetId))) await refreshSheet(sheetId); });
+	// The Sheets list can rename a sheet this browser never opened, or one that moved on: edit its current revision.
+	await inWorkspaceOrder(async () => { const cached = await db.sheets.get(sheetId); if (!cached || !sheetCurrent(cached)) await refreshSheet(sheetId); });
 	await changeGrid(sheetId, (sheet, rows) => ({ sheet: { ...sheet, ...(typeof patch === 'function' ? patch(sheet) : patch), updatedAt: Date.now() }, rows }), options);
 }
 
-export async function deleteSheet(sheetId: string) {
+/** `listed` is the sheet as the Sheets list showed it, for one this browser never opened. */
+export async function deleteSheet(sheetId: string, listed?: { name: string; revision: number }) {
 	return inWorkspaceOrder(async () => {
-		const sheet = await db.sheets.get(sheetId);
-		if (sheet) {
-			// The list shows the live index, so its revision is the one the user confirmed. A newer edit gets one fresh retry.
-			const newer = await connected().remove(sheet.id, Math.max(sheet.revision ?? 0, sheet.cloudSummary?.revision ?? 0));
-			if (newer !== null && await connected().remove(sheet.id, newer) !== null) throw new Error(`“${sheet.name}” is being edited right now. Try deleting it again in a moment.`);
+		const cached = await db.sheets.get(sheetId), indexed = sheetIndex.get(sheetId);
+		// The newest revision known here is the one the user confirmed. A newer edit gets one fresh retry.
+		const revision = Math.max(cached?.revision ?? 0, indexed?.revision ?? 0, listed?.revision ?? 0);
+		if (revision) {
+			const newer = await connected().remove(sheetId, revision);
+			if (newer !== null && await connected().remove(sheetId, newer) !== null) throw new Error(`“${cached?.name ?? indexed?.name ?? listed?.name ?? 'This sheet'}” is being edited right now. Try deleting it again in a moment.`);
 		}
 		await removeLocalSheets([sheetId]);
 	});
@@ -240,19 +259,19 @@ export async function deleteSheet(sheetId: string) {
 
 export async function duplicateSheet(sheetId: string): Promise<Sheet | null> {
 	return inWorkspaceOrder(async () => {
-		if (await db.sheets.count() >= MAX_SHEETS) throw new Error(SHEET_LIMIT_MESSAGE);
+		if (sheetIndex.size >= MAX_SHEETS) throw new Error(SHEET_LIMIT_MESSAGE);
 		await refreshSheet(sheetId);
 		const sheet = await db.sheets.get(sheetId);
 		if (!sheet) return null;
 		const rows = await db.rows.where('sheetId').equals(sheetId).toArray();
 		const draft: Sheet = { ...sheet, revision: undefined, id: id(), name: `${sheet.name} copy`, createdAt: Date.now(), updatedAt: Date.now() };
-		delete draft.cloudSummary;
 		const copiedRows = rows.map((row) => ({ ...row, id: id(), sheetId: draft.id }));
 		const copy = await connected().create(draft, copiedRows);
 		await db.transaction('rw', db.sheets, db.rows, async () => {
 			await db.sheets.add(copy);
 			await db.rows.bulkAdd(copiedRows);
 		});
+		sheetIndex.note(indexEntry(copy));
 		return copy;
 	});
 }
@@ -267,14 +286,15 @@ export async function importMyLocalSheets(): Promise<number> {
 		if (snapshots.some((entry) => entry.rows.length > MAX_ROWS)) throw new Error('One of your local sheets has over 1,000 rows. Export and split it before importing.');
 		return await inWorkspaceOrder(async () => {
 			await refreshWorkspaceNow();
-			const existing = new Set(await db.sheets.toCollection().primaryKeys());
+			const existing = new Set(sheetIndex.ids());
 			const pending = snapshots.filter((entry) => !existing.has(entry.sheet.id));
-			if (existing.size + pending.length > MAX_SHEETS) throw new Error(`Importing these sheets would exceed this workspace’s ${MAX_SHEETS}-sheet limit.`);
+			if (existing.size + pending.length > MAX_SHEETS) throw new Error(`Importing these sheets would exceed this workspace’s ${MAX_SHEETS.toLocaleString()}-sheet limit.`);
 			let imported = 0;
 			for (const snapshot of pending) {
 				if (snapshot.sheet.populate) snapshot.sheet.populate.target = Math.min(MAX_ROWS, snapshot.sheet.populate.target);
 				const sheet = await connected().create(snapshot.sheet, snapshot.rows);
 				await db.transaction('rw', db.sheets, db.rows, async () => { await db.sheets.put(sheet); await db.rows.bulkPut(snapshot.rows); });
+				sheetIndex.note(indexEntry(sheet));
 				imported++;
 			}
 			return imported;
@@ -471,7 +491,7 @@ async function commitGrid(sheetId: string, change?: (sheet: Sheet, rows: Row[]) 
 		}
 		if (canonicalJson(before) === canonicalJson(after)) return;
 		const { changed, deleted } = rowChanges(before.rows, after.rows);
-		// Callers load a sheet known only from the live index before changing it (updateSheet, the sheet page's load gate).
+		// Callers load a sheet this browser never opened before changing it (updateSheet, the sheet page's load gate).
 		const saved = await connected().patch({ revision: before.sheet.revision!, sheet: after.sheet, rows: changed, deleted });
 		// Someone else changed the sheet first: redo this change on their version.
 		if (!saved) { await refreshSheet(sheetId); continue; }
@@ -482,6 +502,7 @@ async function commitGrid(sheetId: string, change?: (sheet: Sheet, rows: Row[]) 
 			// Stamp a copy: the revision is server bookkeeping, which the undo history must not record.
 			await db.sheets.put({ ...after.sheet, revision: saved.revision, updatedAt: saved.updatedAt });
 		});
+		sheetIndex.note(indexEntry({ ...after.sheet, revision: saved.revision }));
 		if (change && options.history !== false) sheetHistory.record(sheetId, makeHistoryEntry(before, after));
 		return;
 	}

@@ -23,7 +23,7 @@
 - License: MIT. Free to use and self-host.
 - Data providers: Context.dev API (web search, scraping, company and people data), OpenAI (reasoning), TypeSafe (optional calibrated classification), optional email providers.
 - Self-hosting: Vercel plus Neon Postgres, or locally with Node.js 22. Requires a Context.dev API key and an OpenAI API key.
-- Limits: 10 sheets per workspace and 1,000 rows per sheet by default; self-hosted copies can change them.
+- Limits: 1,000 sheets per workspace and 1,000 rows per sheet by default; self-hosted copies can change them.
 - Stack: Next.js 16, React 19, TypeScript, Tailwind CSS 4, Neon Postgres, IndexedDB, Vercel AI SDK, Model Context Protocol.
 
 ## Docs

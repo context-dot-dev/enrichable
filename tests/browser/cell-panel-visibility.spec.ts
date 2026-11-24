@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { Sheet, Row } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 for (const columnIndex of [0, 2]) {
  test(`opening cell details keeps column ${columnIndex + 1} visible`, async ({ page, context, baseURL }) => {
@@ -10,7 +11,7 @@ for (const columnIndex of [0, 2]) {
   const rows: Row[] = [{ id: 'r', sheetId: sheet.id, order: 0, createdAt: 1, cells: Object.fromEntries(columns.map((column) => [column.id, { v: JSON.stringify({ subject: 'Hello', body: 'Hi Alice' }), s: 'done', t: 1 }])) }];
   await page.route('**/api/context/usage*', (route) => route.fulfill({ json: { credits: 25000, used: 0 } }));
   await page.route('**/api/keys/verify*', (route) => route.fulfill({ json: { openai: false, context: false, typesafe: false, passwordRequired: false } }));
-  await page.route('**/api/sheets**', (route) => route.fulfill({ json: new URL(route.request().url()).pathname === '/api/sheets' ? [{ sheet, rowCount: 1 }] : { sheet, rows, next: null } }));
+  await page.route('**/api/sheets**', (route) => route.fulfill({ json: new URL(route.request().url()).pathname === '/api/sheets' ? sheetsResponse(route.request().url(), [{ sheet, rows }]) : { sheet, rows, next: null } }));
   await page.goto(`/app/sheets/${sheet.id}`);
   await page.getByRole('dialog').waitFor();
   await page.getByRole('button', { name: 'Close', exact: true }).click();

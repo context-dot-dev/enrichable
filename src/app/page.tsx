@@ -42,7 +42,7 @@ const FAQ = [
 	{ q: 'Where does the data come from?', a: 'Web search, page reads and company and people data come from the Context.dev API. OpenAI models do the reasoning. TypeSafe can make calibrated true or false and category calls, and the email providers you connect find work emails.' },
 	{ q: 'Can I self-host Enrichable?', a: 'Yes. Deploy it to Vercel with a Neon Postgres database in about five minutes, or run it locally with Node.js 22. You need a Context.dev API key and an OpenAI API key. The README on GitHub has the steps.' },
 	{ q: 'Can AI agents use Enrichable?', a: 'Yes. Enrichable includes an MCP server, so Claude Code, Cursor and other MCP clients can list sheets, read rows, add columns and run enrichment in the same workspace you use in the browser.' },
-	{ q: 'How big can a sheet be?', a: 'Up to 1,000 rows per sheet and 10 sheets per workspace by default. Self-hosted copies can change both limits.' },
+	{ q: 'How big can a sheet be?', a: 'Up to 1,000 rows per sheet and 1,000 sheets per workspace by default. Self-hosted copies can change both limits.' },
 ];
 
 function structuredData() {

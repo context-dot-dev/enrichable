@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { Row, Sheet } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 test('outdated results show refresh without hover and return to hover-only play after refreshing', async ({ page, context, baseURL }) => {
 	const cookie = memberCookie('browser-user');
@@ -15,7 +16,7 @@ test('outdated results show refresh without hover and return to hover-only play 
 		const path = new URL(route.request().url()).pathname;
 		let data: unknown = {};
 		if (path === '/api/auth/session') data = account;
-		else if (path === '/api/sheets') data = [{ sheet, rowCount: rows.length }];
+		else if (path === '/api/sheets') data = sheetsResponse(route.request().url(), [{ sheet, rows }]);
 		else if (path === `/api/sheets/${sheet.id}`) {
 			if (route.request().method() === 'PATCH') {
 				const patch = route.request().postDataJSON();

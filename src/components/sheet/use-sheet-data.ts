@@ -1,7 +1,7 @@
 'use client';
 
 import { useToast } from '@/components/ui/toast';
-import { db, loadSheet, recalculateSheet, sheetSync, upgradeSheet } from '@/lib/db';
+import { db, loadSheet, recalculateSheet, sheetCurrent, upgradeSheet, watchSheet } from '@/lib/db';
 import { recoverStalledEnrichments } from '@/lib/enrichment-recovery';
 import { applyFilters, applySort } from '@/lib/filters';
 import { populateRunner } from '@/lib/populate-runner';
@@ -51,11 +51,12 @@ export function useSheetData(sheetId: string, commands: SheetCommands) {
 		return () => clearInterval(timer);
 	}, [sheetId, allRows, commands]);
 	// A sheet saved by an older version is upgraded once its rows are loaded (see `upgradeGrid`).
-	const upgradable = Boolean(sheet && sheetSync(sheet) === 'synced' && (sheet.dataVersion ?? 0) < SHEET_DATA_VERSION);
+	const upgradable = Boolean(sheet && sheetCurrent(sheet) && (sheet.dataVersion ?? 0) < SHEET_DATA_VERSION);
 	useEffect(() => {
 		if (upgradable) void upgradeSheet(sheetId).catch(() => {});
 	}, [upgradable, sheetId]);
 	useEffect(() => watchRealtimeSheet(sheetId), [sheetId]);
+	useEffect(() => watchSheet(sheetId), [sheetId]);
 	useEffect(() => {
 		if (allRows?.some((row) => Object.values(row.cells).some((cell) => cell.f))) {
 			void recalculateSheet(sheetId).catch((error) => toast(messageOf(error, 'Formula calculation failed'), 'error'));

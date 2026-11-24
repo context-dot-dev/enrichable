@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
+import { SHEET_LIST_URL, sheetsResponse } from '../support/sheet-list';
 
 test('workspace trial balance shows dollars against the grant and the setup stays out of the way', async ({ page, context, baseURL }) => {
 	await context.addCookies([{ name: 'enrichable.session', value: memberCookie('browser-user'), url: baseURL!, httpOnly: true, sameSite: 'Lax' }]);
@@ -7,7 +8,7 @@ test('workspace trial balance shows dollars against the grant and the setup stay
 	await page.route('**/api/keys/verify*', (route) => route.fulfill({ json: route.request().method() === 'POST'
 		? { openai: { ok: true, inference: true }, context: { ok: true }, typesafe: { configured: false, ok: false } }
 		: { openai: true, openaiTrial: { model: 'gpt-6-luna' }, context: true, contextConnected: true, typesafe: false, passwordRequired: false } }));
-	await page.route('**/api/sheets', (route) => route.fulfill({ json: [] }));
+	await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url()) }));
 	await page.route('**/api/context/usage', (route) => route.fulfill({ json: { credits: 1000, used: 0 } }));
 	await page.route('**/api/openai/usage', (route) => route.fulfill({ json: { enabled: true, model: 'gpt-6-luna', grantedUsd: 2, remainingUsd, deploymentAvailable: true } }));
 	await page.goto('/app');
@@ -38,7 +39,7 @@ for (const exhausted of ['organization', 'deployment']) {
    if (route.request().method() === 'POST') return route.fulfill({ json: { openai: { ok: true, inference: true }, context: { ok: true }, typesafe: { ok: false, configured: false } } });
    return route.fulfill({ json: { openai: true, openaiTrial: { model: 'gpt-6-luna' }, context: true, contextConnected: true, typesafe: false, passwordRequired: false } });
   });
-  await page.route('**/api/sheets', (route) => route.fulfill({ json: [] }));
+  await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url()) }));
   await page.route('**/api/context/usage', (route) => route.fulfill({ json: { credits: 1000 } }));
   await page.route('**/api/openai/usage', (route) => route.fulfill({ json: { enabled: true, remainingUsd: exhausted === 'organization' ? 0 : 1, deploymentAvailable: exhausted !== 'deployment' } }));
   await page.goto('/app');

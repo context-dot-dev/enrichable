@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { SHEET_LIST_URL, sheetsResponse } from '../support/sheet-list';
 
 test('agent access retrieves and copies a shared key after reload and preserves atomic rotation', async ({ page, context }) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	// UI boundary test; database and protocol behavior are covered with embedded Postgres in server/mcp.test.ts.
-	await page.route('**/api/sheets', (route) => route.fulfill({ json: [] }));
+	await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url()) }));
 	await page.route('**/api/keys/verify', (route) => route.fulfill({ json: { openai: false, context: false, typesafe: false, contextConnected: false, passwordRequired: false } }));
 	let key: { prefix: string; version: string; createdAt: number; recoverable?: boolean; secret?: string } | null = null;
 	const first = `enr_mcp_${'a'.repeat(43)}`;

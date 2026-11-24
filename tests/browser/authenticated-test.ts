@@ -18,9 +18,9 @@ export const test = base.extend({
   await context.addCookies([{name:'enrichable.session',value:memberCookie(user),url:appURL,httpOnly:true,sameSite:'Lax'}]);
   await context.route('**/api/context/usage*',route=>route.fulfill({json:{credits:25000,used:0}}));
   const headers={'x-enrichable-account':partition,'x-enrichable-session':'browser-session'.repeat(3),origin:appURL};
-  const index=await context.request.get(`${appURL}/api/sheets`,{headers});
+  const index=await context.request.get(`${appURL}/api/sheets?view=index`,{headers});
   if(!index.ok())throw new Error('Browser tests require a migrated test Neon database.');
-  for(const entry of await index.json())await context.request.delete(`${appURL}/api/sheets/${entry.sheet.id}?revision=${entry.sheet.revision}`,{headers});
+  for(const entry of (await index.json()).sheets)await context.request.delete(`${appURL}/api/sheets/${encodeURIComponent(entry.id)}?revision=${entry.revision}`,{headers});
   await runTest(context);
  }
 });

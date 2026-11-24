@@ -1,6 +1,7 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { Row, Sheet } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 async function workspace(page: Page, context: BrowserContext, baseURL: string) {
 	await context.addCookies([{ name: 'enrichable.session', value: memberCookie('sheet-loading'), url: baseURL, httpOnly: true, sameSite: 'Lax' }]);
@@ -11,7 +12,7 @@ async function workspace(page: Page, context: BrowserContext, baseURL: string) {
 	await page.route('**/api/keys/verify*', (route) => route.fulfill({ json: { openai: false, context: false, typesafe: false, passwordRequired: false } }));
 	await page.route('**/api/sheets**', async (route) => {
 		if (new URL(route.request().url()).pathname === '/api/sheets') {
-			await route.fulfill({ json: state.listed ? [{ sheet, rowCount: rows.length }] : [] });
+			await route.fulfill({ json: sheetsResponse(route.request().url(), state.listed ? [{ sheet, rows }] : []) });
 		} else {
 			state.reads += 1;
 			await route.fulfill({ status: state.status, json: state.status === 200 ? { sheet, rows, next: null } : { error: state.status === 404 ? 'Sheet not found in this workspace.' : 'Workspace temporarily unavailable.' } });

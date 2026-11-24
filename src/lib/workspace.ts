@@ -2,8 +2,11 @@ import { DATE_FORMATS } from './date-format';
 import { z } from 'zod';
 import { ColumnOpSchema, PopulateRequestSchema, COLUMN_FORMATS } from './types';
 
-export const MAX_SHEETS = 10;
+export const MAX_SHEETS = 1000;
 export const MAX_ROWS = 1000;
+/** Sheets per page of the Sheets list, and the most one list request may ask for. */
+export const SHEET_PAGE_SIZE = 24;
+export const SHEET_PAGE_LIMIT = 100;
 /** Sheets saved before version 1 may still call their website column "Domain", and before version 2 may hold results
     fingerprinted by column name (`v1:`); see `upgradeGrid`. */
 export const SHEET_DATA_VERSION = 2;
@@ -20,6 +23,8 @@ export const rowSchema = z.object({
 	id: identifier, sheetId: identifier, order: z.number().finite(), createdAt: z.number().finite(),
 	cells: z.record(identifier, z.object({ v: cellValue, f: z.string().optional(), s: z.enum(['idle', 'queued', 'running', 'done', 'error']), e: z.string().optional(), m: z.record(z.string(), z.unknown()).optional(), owner: identifier.optional(), t: z.number().finite() })),
 });
+/** A page of the sheet list. `search` matches sheet names, ignoring case. */
+export const sheetListSchema = z.object({ search: z.string().trim().max(300).default(''), offset: z.coerce.number().int().min(0).max(MAX_SHEETS).default(0), limit: z.coerce.number().int().min(1).max(SHEET_PAGE_LIMIT).default(SHEET_PAGE_SIZE) });
 export const createSheetSchema = z.object({ sheet: sheetSchema, rows: z.array(rowSchema).max(MAX_ROWS).default([]) });
 export const patchSheetSchema = z.object({ revision: z.number().int().positive(), sheet: sheetSchema, rows: z.array(rowSchema).max(MAX_ROWS), deleted: z.array(identifier).max(MAX_ROWS) });
 

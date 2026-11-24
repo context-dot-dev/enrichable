@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
+import { SHEET_LIST_URL, sheetsResponse } from '../support/sheet-list';
 
 test('Hunter and Prospeo keys are checked, saved, and listed in Configuration → Connections', async ({ page, context, baseURL }) => {
  await context.addCookies([{ name: 'enrichable.session', value: memberCookie('browser-user'), url: baseURL!, httpOnly: true, sameSite: 'Lax' }]);
  await page.route('**/api/organization-settings', route => route.fulfill({ json: { local: true } }));
- await page.route('**/api/sheets', route => route.fulfill({ json: [] }));
+ await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url()) }));
  await page.route('**/api/context/usage*', route => route.fulfill({ json: { credits: 1000, used: 0 } }));
  await page.route('**/api/openai/usage*', route => route.fulfill({ json: { enabled: false } }));
  const received: Array<Record<string, string>> = [];
@@ -46,7 +47,7 @@ test('provider columns save their configuration, send row inputs, and display re
  const { sheetSchema, rowSchema } = await import('../../src/lib/workspace');
  let sheet = sheetSchema.parse({ id: 'provider-sheet', name: 'Provider lookups', revision: 1, columns: [{ id: 'name', name: 'Name', type: 'source', width: 180, createdAt: 1 }, { id: 'domain', name: 'Website', type: 'source', width: 180, createdAt: 1 }, { id: 'email', name: 'Email', type: 'source', width: 180, createdAt: 1 }], filters: [], sort: null, createdAt: 1, updatedAt: 1 }) as import('../../src/lib/types').Sheet;
  let rows = [rowSchema.parse({ id: 'row', sheetId: sheet.id, order: 0, createdAt: 1, cells: { name: { v: 'Ada Lovelace', s: 'done', t: 1 }, domain: { v: 'example.com', s: 'done', t: 1 }, email: { v: 'ada@example.com', s: 'done', t: 1 } } })];
- await page.route('**/api/sheets', route => route.fulfill({ json: [{ sheet, rowCount: 1 }] }));
+ await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url(), [{ sheet, rowCount: 1 }]) }));
  await page.route('**/api/sheets/provider-sheet*', async route => {
   if (route.request().method() === 'PATCH') {
    const body = route.request().postDataJSON();

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { parseCsv, csvToRecords } from '../src/lib/csv';
-import { appendRows, connectWorkspace, createSheet, db, newColumn, upgradeSheet } from '../src/lib/db';
+import { appendRows, connectWorkspace, createSheet, db, loadSheet, newColumn, upgradeSheet } from '../src/lib/db';
 import { canonicalJson } from '../src/lib/cell-content';
 import { inputFingerprint, inputRecord } from '../src/lib/enrichment-freshness';
 import { planCell, resultCell } from '../src/lib/enrichment-plan';
@@ -26,7 +26,8 @@ async function legacySheet(id: string, columns: Column[]) {
 	const ceo = columns.find((entry) => entry.id === 'ceo');
 	if (ceo) row.cells.ceo = resultCell(planCell({ sheet, rows: [row] }, { rowId: row.id, columnId: 'ceo' })!, 'Ada');
 	await remote.create(sheet, [row]);
-	await connectWorkspace(remote);
+	// As the sheet page does: the sheet loads when it is opened.
+	await loadSheet(id);
 	return sheet;
 }
 const saved = async (id: string) => ({ sheet: (await db.sheets.get(id))!, rows: await db.rows.where('sheetId').equals(id).sortBy('order') });
@@ -72,7 +73,7 @@ test('a sheet saved with results fingerprinted by column name is restamped once,
 	const legacy = inputFingerprint(canonicalJson({ op, record: inputRecord(columns, [row], 0, op, 'ceo') })!).replace(/^v2:/, 'v1:');
 	row.cells.ceo = { v: 'Ada', s: 'done', m: { inputFingerprint: legacy }, t: 2 };
 	await remote.create(sheet, [row]);
-	await connectWorkspace(remote);
+	await loadSheet('stamped');
 	await upgradeSheet('stamped');
 	const upgraded = await saved('stamped');
 	assert.deepEqual([upgraded.sheet.columns[0].name, upgraded.sheet.dataVersion], ['Domain', SHEET_DATA_VERSION], 'created after the Domain upgrade shipped');

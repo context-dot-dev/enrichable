@@ -3,6 +3,7 @@
 import { accountHeaders } from './account-storage';
 import { observeServerDate } from './server-clock';
 import { CloudError, refused, type SheetRemote, type SheetSnapshot } from './sheet-remote';
+import type { SheetIndexEntry, SheetPage } from './sheet-summary';
 import type { Row, Sheet } from './types';
 
 type Page = { sheet: Sheet; rows: Row[]; next: number | null };
@@ -36,7 +37,13 @@ async function readPages(sheetId: string): Promise<SheetSnapshot> {
 
 /** The workspace's sheets through /api/sheets. */
 export const cloudSheets: SheetRemote = {
-	async list() { return (await request<Array<{ sheet: Sheet }>>()).map((entry) => entry.sheet); },
+	async index() { return (await request<{ sheets: SheetIndexEntry[] }>('?view=index')).sheets; },
+	list({ search = '', offset = 0, limit } = {}) {
+		const params = new URLSearchParams({ offset: String(offset) });
+		if (limit !== undefined) params.set('limit', String(limit));
+		if (search.trim()) params.set('search', search.trim());
+		return request<SheetPage>(`?${params}`);
+	},
 	async read(sheetId) {
 		// A write landing between pages fails the pinned page (409): read the sheet again, up to three times.
 		for (let attempt = 0; ; attempt++) {

@@ -58,6 +58,6 @@ test('API-key onboarding, persistence, and browser isolation work without OAuth'
  // Remove only the sheet created by this browser's isolated test workspace.
  const session = await (await page.request.get('/api/auth/session')).json();
  const headers = { 'x-enrichable-account': session.partition, 'x-enrichable-session': session.sessionId, origin: baseURL! };
- const index = await (await page.request.get('/api/sheets', { headers })).json();
- for (const entry of index) expect((await page.request.delete(`/api/sheets/${entry.sheet.id}?revision=${entry.sheet.revision}`, { headers })).ok()).toBeTruthy();
+ const index = await (await page.request.get('/api/sheets?view=index', { headers })).json();
+ for (const entry of index.sheets) expect((await page.request.delete(`/api/sheets/${entry.id}?revision=${entry.revision}`, { headers })).ok()).toBeTruthy();
 });

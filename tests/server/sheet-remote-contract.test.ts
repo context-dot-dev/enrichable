@@ -47,9 +47,10 @@ const row = (sheetId: string, id: string, order: number, cells: Record<string, C
 const status = (code: number, message?: RegExp) => (error: unknown) => refused(error, code) && (!message || message.test(error.message));
 
 contract('a created sheet is stored as parsed at revision 1, and reads return every row in order', async (remote) => {
-	const created = await remote.create({ ...sheet('s'), cloudSummary: { revision: 9, rowCount: 0, rows: [] } }, [row('s', 'b', 1, { notes: 'second' }), row('s', 'a', 0, { notes: 'first' })]);
+	// A field the browser keeps for itself never reaches the workspace.
+	const created = await remote.create({ ...sheet('s'), localOnly: true } as Sheet, [row('s', 'b', 1, { notes: 'second' }), row('s', 'a', 0, { notes: 'first' })]);
 	assert.deepEqual(created, { ...sheet('s'), revision: 1 });
-	assert.deepEqual(await remote.list(), [{ ...sheet('s'), revision: 1 }]);
+	assert.deepEqual(await remote.index(), [{ id: 's', revision: 1, name: 's', createdAt: 0 }]);
 	const snapshot = await remote.read('s');
 	assert.deepEqual(snapshot?.sheet, { ...sheet('s'), revision: 1 });
 	assert.deepEqual(snapshot?.rows.map((entry) => entry.cells.notes.v), ['first', 'second']);
@@ -79,12 +80,47 @@ contract('written values pass Admission, while values stored earlier never block
 	assert.equal((await remote.read('s'))!.sheet.revision, 2);
 });
 
-contract('a workspace holds ten sheets and a sheet a thousand rows', async (remote) => {
+contract('a workspace holds a thousand sheets and a sheet a thousand rows', async (remote) => {
 	await remote.create(sheet('full'), Array.from({ length: 1000 }, (_, order) => row('full', `r${order}`, order)));
 	await assert.rejects(remote.patch({ revision: 1, sheet: sheet('full'), rows: [row('full', 'extra', 1000)], deleted: [] }), status(422, /1,000 rows/));
-	for (let index = 1; index < 10; index++) await remote.create(sheet(`s${index}`), []);
-	await assert.rejects(remote.create(sheet('eleventh'), []), status(422, /up to 10 sheets/));
-	assert.equal((await remote.list()).length, 10);
+	for (let index = 1; index < 1000; index++) await remote.create(sheet(`s${index}`), []);
+	await assert.rejects(remote.create(sheet('one-too-many'), []), status(422, /up to 1,000 sheets/));
+	assert.equal((await remote.index()).length, 1000);
+	// A full workspace is still read a page at a time.
+	const page = await remote.list({ offset: 990, limit: 24 });
+	assert.deepEqual([page.total, page.sheets.length], [1000, 10]);
+	assert.deepEqual([(await remote.list({ search: 's99' })).total, (await remote.list({ search: 'full' })).sheets[0].rowCount], [11, 1000]);
+});
+
+contract('the sheet list is paged, most recently edited first, and searched by name; the index lists every sheet', async (remote) => {
+	const named = (id: string, name: string, updatedAt: number, columns = [notes, site]): Sheet => ({ ...sheet(id, columns), name, createdAt: updatedAt, updatedAt });
+	await remote.create(named('a', 'Solar installers', 1), [row('a', 'a1', 0, { notes: 'first', site: 'one.example' }), row('a', 'a2', 1, { notes: 'second' }), row('a', 'a3', 2), row('a', 'a4', 3)]);
+	await remote.create(named('b', 'Fintech leads 100%', 3, [notes, site, { ...notes, id: 'extra', name: 'Extra' }, { ...notes, id: 'ai', name: 'Summary', type: 'enriched', op: { kind: 'template', template: '{{Notes}}' } }]), []);
+	await remote.create(named('c', 'solar_farms', 2), []);
+	assert.deepEqual((await remote.index()).sort((x, y) => x.id.localeCompare(y.id)), [{ id: 'a', revision: 1, name: 'Solar installers', createdAt: 1 }, { id: 'b', revision: 1, name: 'Fintech leads 100%', createdAt: 3 }, { id: 'c', revision: 1, name: 'solar_farms', createdAt: 2 }]);
+
+	const all = await remote.list();
+	assert.deepEqual([all.total, all.sheets.map((entry) => entry.id)], [3, ['b', 'c', 'a']]);
+	// A summary carries counts and the first cells of the first rows, never the definition or every row.
+	assert.deepEqual(all.sheets[2], { id: 'a', name: 'Solar installers', revision: 1, createdAt: 1, updatedAt: 1, rowCount: 4, columnCount: 2, aiColumnCount: 0, preview: { columns: [{ id: 'notes', name: 'Notes', type: 'source' }, { id: 'site', name: 'Website', type: 'source' }], rows: [['first', 'one.example'], ['second', null], [null, null]] } });
+	assert.deepEqual([all.sheets[0].columnCount, all.sheets[0].aiColumnCount, all.sheets[0].preview.columns.length, all.sheets[0].preview.rows], [4, 1, 3, []]);
+
+	assert.deepEqual((await remote.list({ offset: 1, limit: 1 })).sheets.map((entry) => entry.id), ['c']);
+	assert.deepEqual(await remote.list({ offset: 3 }), { sheets: [], total: 3 }, 'a page past the end is empty and still counts the matches');
+	const solar = await remote.list({ search: ' SOLAR ' });
+	assert.deepEqual([solar.total, solar.sheets.map((entry) => entry.id)], [2, ['c', 'a']], 'case and surrounding spaces are ignored');
+	assert.deepEqual((await remote.list({ search: 'solar', offset: 1 })).sheets.map((entry) => entry.id), ['a']);
+	// Characters a pattern would treat specially match only themselves.
+	assert.deepEqual((await remote.list({ search: '%' })).sheets.map((entry) => entry.id), ['b']);
+	assert.deepEqual((await remote.list({ search: 'r_f' })).sheets.map((entry) => entry.id), ['c']);
+	assert.deepEqual((await remote.list({ search: 'solar farms' })).total, 0);
+	await assert.rejects(remote.list({ limit: 101 }), status(400));
+
+	// An edit moves a sheet to the front, and its new name is the one searched and indexed.
+	const saved = await remote.patch({ revision: 1, sheet: { ...named('a', 'Wind installers', 1) }, rows: [], deleted: [] });
+	assert.deepEqual((await remote.list()).sheets.map((entry) => [entry.id, entry.revision]), [['a', 2], ['b', 1], ['c', 1]]);
+	assert.deepEqual((await remote.list({ search: 'solar' })).sheets.map((entry) => entry.id), ['c']);
+	assert.deepEqual((await remote.index()).find((entry) => entry.id === 'a'), { id: 'a', revision: saved!.revision, name: 'Wind installers', createdAt: 1 });
 });
 
 contract('a delete at a stale revision keeps the sheet and names its revision; a missing sheet is already deleted', async (remote) => {
@@ -105,5 +141,5 @@ contract('malformed sheets and rows are refused before anything is stored', asyn
 	await assert.rejects(remote.create({ ...sheet('s'), name: '' }, []), status(400));
 	await remote.create(sheet('s'), []);
 	await assert.rejects(remote.patch({ revision: 0, sheet: sheet('s'), rows: [], deleted: [] }), status(400));
-	assert.deepEqual((await remote.list()).map((entry) => entry.revision), [1]);
+	assert.deepEqual((await remote.index()).map((entry) => entry.revision), [1]);
 });

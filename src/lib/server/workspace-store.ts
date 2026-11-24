@@ -1,10 +1,11 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type { Account } from '../auth-identity';
-import type { Cell, Row, Sheet } from '../types';
+import type { Cell, CellValue, Row, Sheet } from '../types';
+import { PREVIEW_COLUMNS, PREVIEW_ROWS, type SheetIndexEntry, type SheetListQuery } from '../sheet-summary';
 import { PRESENCE_TTL_MS, type presenceInputSchema } from '../collaboration';
 import type { z } from 'zod';
-import { createSheetSchema, patchSheetSchema, MAX_ROWS, MAX_SHEETS, parseInput, WorkspaceError } from '../workspace';
+import { createSheetSchema, patchSheetSchema, MAX_ROWS, MAX_SHEETS, SHEET_PAGE_LIMIT, parseInput, WorkspaceError } from '../workspace';
 import { invalidCell, redefinedColumns } from '../cell-admission';
 import { workspaceId, type Database, type Sql } from './database';
 
@@ -38,9 +39,31 @@ ON CONFLICT (workspace_id,client_id) DO UPDATE SET sheet_id=excluded.sheet_id,na
 	async leavePresence(actor: Account, clientId: string) {
 		await this.database.transaction(async (client) => { await client.query('DELETE FROM enrichable.sheet_presence WHERE workspace_id=$1 AND client_id=$2 AND user_id=$3', [workspaceId(actor), clientId, collaboratorIdentity(actor).userId]); });
 	}
-	async list(actor: Actor) {
-		const result = await this.database.read('SELECT s.data, s.revision, (SELECT count(*)::int FROM enrichable.sheet_rows r WHERE r.workspace_id=s.workspace_id AND r.sheet_id=s.id) AS row_count FROM enrichable.sheets s WHERE s.workspace_id=$1 ORDER BY s.id', [workspaceId(actor)]);
-		return result.rows.map((entry) => ({ sheet: { ...(entry.data as Sheet), revision: Number(entry.revision) }, rowCount: Number(entry.row_count) }));
+	/** Every sheet's index entry, from columns stored beside each definition: no definition is read. */
+	async index(actor: Actor): Promise<SheetIndexEntry[]> {
+		const result = await this.database.read('SELECT id, revision, name, created_at FROM enrichable.sheets WHERE workspace_id=$1', [workspaceId(actor)]);
+		return result.rows.map((entry) => ({ id: String(entry.id), revision: Number(entry.revision), name: String(entry.name), createdAt: Number(entry.created_at) }));
+	}
+	/** One page of the sheets whose name contains `search`, most recently edited first, and how many match. Only the
+	    page's sheets have their definition read, their rows counted and their first cells fetched. */
+	async list(actor: Actor, query: SheetListQuery = {}) {
+		const { search = '', offset = 0, limit = SHEET_PAGE_LIMIT } = query;
+		const preview = Array.from({ length: PREVIEW_COLUMNS }, (_, index) => `p.data->'cells'->(s.data->'columns'->${index}->>'id')->'v'`).join(', ');
+		const result = await this.database.read(`WITH matching AS (
+				SELECT m.id, m.updated_at FROM enrichable.sheets m WHERE m.workspace_id=$1 AND ($2::text IS NULL OR m.name ILIKE $2)
+			)
+			SELECT t.total, s.data, s.revision,
+				(SELECT count(*)::int FROM enrichable.sheet_rows r WHERE r.workspace_id=s.workspace_id AND r.sheet_id=s.id) AS row_count,
+				COALESCE((SELECT jsonb_agg(jsonb_build_array(${preview}) ORDER BY p.position, p.id) FROM (
+					SELECT r.data, r.position, r.id FROM enrichable.sheet_rows r WHERE r.workspace_id=s.workspace_id AND r.sheet_id=s.id ORDER BY r.position, r.id LIMIT ${PREVIEW_ROWS}
+				) p), '[]'::jsonb) AS preview_rows
+			FROM (SELECT count(*)::int AS total FROM matching) t
+			LEFT JOIN (SELECT id, updated_at FROM matching ORDER BY updated_at DESC, id COLLATE "C" LIMIT $4 OFFSET $3) page ON true
+			LEFT JOIN enrichable.sheets s ON s.workspace_id=$1 AND s.id=page.id
+			ORDER BY page.updated_at DESC, page.id COLLATE "C"`, [workspaceId(actor), search ? `%${search.replace(/[\\%_]/g, '\\$&')}%` : null, offset, limit]);
+		// An empty page still returns one row, carrying the total.
+		const entries = result.rows.filter((entry) => entry.data).map((entry) => ({ sheet: { ...(entry.data as Sheet), revision: Number(entry.revision) }, rowCount: Number(entry.row_count), previewRows: entry.preview_rows as CellValue[][] }));
+		return { entries, total: Number(result.rows[0]?.total ?? 0) };
 	}
 	async get(actor: Actor, id: string, offset = 0, revision?: number) {
 		// A single SQL statement gives the metadata and row page the same MVCC snapshot.
@@ -70,7 +93,7 @@ ON CONFLICT (workspace_id,client_id) DO UPDATE SET sheet_id=excluded.sheet_id,na
 		this.validateRows(sheet, rows);
 		return this.database.transaction(async (client, workspace) => {
 			const count = await client.query('SELECT count(*)::int AS count FROM enrichable.sheets WHERE workspace_id=$1', [workspace]);
-			if (Number(count.rows[0].count) >= MAX_SHEETS) throw new WorkspaceError(`This workspace can have up to ${MAX_SHEETS} sheets. Delete a sheet to create another.`, 422);
+			if (Number(count.rows[0].count) >= MAX_SHEETS) throw new WorkspaceError(`This workspace can have up to ${MAX_SHEETS.toLocaleString('en-US')} sheets. Delete a sheet to create another.`, 422);
 			const created = await client.query('INSERT INTO enrichable.sheets (workspace_id, id, data, created_by, updated_by) VALUES ($1,$2,$3::jsonb,$4,$4) ON CONFLICT DO NOTHING RETURNING id', [workspace, sheet.id, JSON.stringify(sheet), actor.user.id]);
 			if (!created.rows.length) throw new WorkspaceError('This sheet already exists.', 409);
 			await this.putRows(client, workspace, sheet.id, rows);

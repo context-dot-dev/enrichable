@@ -43,7 +43,7 @@ test('another member can load and edit shared sheets from a separate browser, wh
 		await page.goto('/app');
 		await page.getByRole('dialog').waitFor();
 		await page.getByRole('button', { name: 'Close', exact: true }).click();
-		await expect(page.getByText('1 / 10 sheets')).toBeVisible();
+		await expect(page.getByText('1 sheet', { exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'New sheet', exact: true }).click();
 		await page.getByRole('dialog', { name: 'New sheet' }).getByRole('button', { name: 'Import CSV', exact: true }).click();
 		await page.getByLabel('Or paste CSV', { exact: true }).fill('Value\n' + Array.from({ length: 1001 }, (_, i) => i).join('\n'));

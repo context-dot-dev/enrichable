@@ -23,7 +23,7 @@ test('duplication copies every row of the workspace’s current version, even of
 	};
 	const copy = (await duplicateSheet(source.id))!;
 	assert.equal(copy.name, 'Renamed copy');
-	assert.equal(created!.sheet.cloudSummary, undefined, 'the live index summary is not copied');
+	assert.equal(created!.sheet.revision, undefined, 'the copy starts its own history');
 	const stored = remote.snapshot(copy.id)!;
 	assert.equal(stored.rows.length, 101);
 	assert.equal(stored.rows[0].cells.value.v, 'Updated remotely');

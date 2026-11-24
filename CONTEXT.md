@@ -13,6 +13,10 @@ _Avoid_: Organization (on self-hosted), account, project
 **Sheet**:
 A named grid of rows and columns, saved with a revision.
 
+**Sheet index**:
+Every sheet in a workspace by ID with its name, creation time and revision, and nothing else. Browsers follow it to know which sheets exist and whether a cached copy is behind (`src/lib/sheet-index.ts`); definitions and rows load when a sheet is listed or opened.
+_Avoid_: Sheet list (the paged, searched list on the Sheets page)
+
 **View**:
 A viewer's filters and sort for a sheet, kept in their browser; changing it never changes the sheet for anyone else (`src/lib/sheet-view.ts`).
 
@@ -79,7 +83,7 @@ _Avoid_: Organization key, MCP token
 
 ## Relationships
 
-- A **Workspace** holds up to 10 **Sheets**; a **Sheet** holds up to 1,000 rows.
+- A **Workspace** holds up to 1,000 **Sheets**; a **Sheet** holds up to 1,000 rows.
 - An **AI column** has exactly one **Operation**; a **Source column** has none.
 - An **Operation**'s **References** determine which **Cells** an **Enrichment** waits on.
 - Every write of a **Cell** passes **Admission** for its column and source.

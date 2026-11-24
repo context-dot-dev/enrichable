@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { ColumnOp, Row, Sheet } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 for (const width of [1360, 390]) {
  test(`column composer creates a document with references at ${width}px`, async ({ page, context, baseURL }) => {
@@ -18,7 +19,7 @@ for (const width of [1360, 390]) {
     sheet = { ...route.request().postDataJSON().sheet, revision: sheet.revision! + 1 };
     return route.fulfill({ json: { revision: sheet.revision, updatedAt: Date.now() } });
    }
-   await route.fulfill({ json: new URL(route.request().url()).pathname === '/api/sheets' ? [{ sheet, rowCount: rows.length }] : { sheet, rows, next: null } });
+   await route.fulfill({ json: new URL(route.request().url()).pathname === '/api/sheets' ? sheetsResponse(route.request().url(), [{ sheet, rows }]) : { sheet, rows, next: null } });
   });
   let composed = '';
   let attempts = 0;

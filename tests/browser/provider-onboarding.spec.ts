@@ -1,9 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
+import { SHEET_LIST_URL, sheetsResponse } from '../support/sheet-list';
 
 async function mockProviders(page: Page, available: Record<string, unknown>) {
  await page.route('**/api/organization-settings', route => route.fulfill({ json: { local: true } }));
- await page.route('**/api/sheets', (route) => route.fulfill({ json: [] }));
+ await page.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url()) }));
  await page.route('**/api/context/usage*', (route) => route.fulfill({ json: { credits: 1000, used: 0 } }));
  await page.route('**/api/openai/usage*', (route) => route.fulfill({ json: { enabled: false } }));
  await page.route('**/api/keys/verify*', (route) => {

@@ -2,7 +2,7 @@ import 'server-only';
 import { z } from 'zod';
 import type { Account } from '../auth-identity';
 import { ENTITY_COLUMNS, ENTITY_KINDS, ColumnOpSchema, type Cell, type Column, type EnrichFailure, type Row, type Sheet } from '../types';
-import { parseInput, SHEET_DATA_VERSION, WorkspaceError, sheetSchema } from '../workspace';
+import { MAX_SHEETS, parseInput, SHEET_DATA_VERSION, SHEET_PAGE_LIMIT, WorkspaceError, sheetSchema } from '../workspace';
 import { assertNoEnrichmentCycles } from '../enrichment-dependencies';
 import { BUSY_MESSAGE, failureCell, planCell, renameColumn, resultCell, settleCell, startCell, upgradeLegacyResults, type CommitOutcome, type EnrichmentPlan, type Grid } from '../enrichment-plan';
 import { upgradeGrid } from '../sheet-upgrade';
@@ -36,9 +36,11 @@ const edit = z.object({ rowId: id, columnId: id, value });
 const TYPED_VALUES = 'Columns with a typed format (website, webpage, currency, percent, unit, checkbox, category) store values normalized to it, such as example.com or 1200; a value that does not fit refuses the whole call, naming each cell.';
 const sheetId = { sheetId: id };
 const mutation = { ...sheetId, revision };
+/** Sheets per list_sheets call unless the agent asks for more: enough to browse, small enough to read. */
+const MCP_SHEET_PAGE = 50;
 
 export const mcpTools = {
-	list_sheets: { description: 'List compact sheet summaries, column names/IDs, revisions, row counts, and app links. Pass includeDefinitions=true for full definitions, or get_sheet for one sheet.', schema: z.object({ includeDefinitions: z.boolean().default(false) }) },
+	list_sheets: { description: `List compact sheet summaries, column names/IDs, revisions, row counts, and app links, most recently edited first. A workspace can hold many sheets: results come ${MCP_SHEET_PAGE} at a time (limit up to ${SHEET_PAGE_LIMIT}); pass search to keep the sheets whose name contains it, and pass the returned nextOffset as offset to continue. Pass includeDefinitions=true for full definitions, or get_sheet for one sheet.`, schema: z.object({ includeDefinitions: z.boolean().default(false), search: z.string().trim().max(300).default(''), offset: z.number().int().min(0).max(MAX_SHEETS).default(0), limit: z.number().int().min(1).max(SHEET_PAGE_LIMIT).default(MCP_SHEET_PAGE) }) },
 	get_sheet: { description: 'Read columns, revision, and up to 100 rows. Pass revision on subsequent pages for a consistent snapshot. nextOffset is null at the end.', schema: z.object({ ...sheetId, offset: z.number().int().min(0).max(1000).default(0), revision: revision.optional() }) },
 	create_sheet: { description: `Create a spreadsheet with the app's built-in blank (Name, Website)/companies/people/websites layout, or supply custom columns. Prefer this tool for spreadsheet creation. Name a company's website column Website (a source column named Domain or Site also works), and reference it as {{Website}}. Add built-in operations through enrichments (matching preset column names replace those source columns). No provider calls run at creation. Read returned column IDs, import rows with upsert_rows, then enrich_cells. ${operationGuidance} Supply a stable unique sheetId for safe matching-definition retries.`, schema: z.object({ ...sheetId, name: z.string().min(1).max(300), template: z.enum(['blank', ...ENTITY_KINDS]).default('blank'), columns: z.array(columnInput).min(1).max(200).optional().describe('Optional complete custom base layout; omit to use the selected built-in template.'), enrichments: z.array(enrichedColumnInput).max(200).default([]).describe('Built-in enrichment columns. Match a base column name to replace it, or use a new name to append. Prefer specialized operations to ai or external custom code.') }) },
 	upsert_rows: { description: `Insert or partially update up to 100 rows by stable row id. cells maps column IDs to literal values, including strings beginning with =. Existing unspecified cells are preserved. ${TYPED_VALUES} Requires the current revision.`, schema: z.object({ ...mutation, rows: z.array(z.object({ id, cells: z.record(id, value) })).min(1).max(100) }) },
@@ -79,10 +81,11 @@ export class McpOperations {
 		}
 		return this.sheets.snapshot(this.actor, snapshot.sheet.id);
 	}
-	/** Every sheet, each upgraded first (see `upgrade`). */
-	private async list() {
-		const entries = await this.sheets.list(this.actor);
-		return Promise.all(entries.map(async (entry) => (entry.sheet.dataVersion ?? 0) >= SHEET_DATA_VERSION ? entry : { ...entry, sheet: (await this.snapshot(entry.sheet.id)).sheet }));
+	/** One page of sheets, each upgraded first (see `upgrade`). */
+	private async list(query: { search: string; offset: number; limit: number }) {
+		const { entries, total } = await this.sheets.list(this.actor, query);
+		const sheets = await Promise.all(entries.map(async ({ sheet, rowCount }) => ({ sheet: (sheet.dataVersion ?? 0) >= SHEET_DATA_VERSION ? sheet : (await this.snapshot(sheet.id)).sheet, rowCount })));
+		return { sheets, total, nextOffset: query.offset + entries.length < total && entries.length ? query.offset + entries.length : null };
 	}
 	private assertWritable(snapshot: Snapshot) {
 		if (snapshot.rows.some((row) => Object.values(row.cells).some((cell) => cell.f))) throw new WorkspaceError('MCP edits to sheets containing formulas are not supported yet. Formula recalculation requires the browser.', 422);
@@ -129,8 +132,8 @@ export class McpOperations {
 		switch (name) {
 			case 'list_sheets': {
 				const args = parseInput(mcpTools.list_sheets.schema, input, 'Invalid arguments.');
-				const entries = await this.list();
-				return { sheets: args.includeDefinitions ? entries : entries.map(({ sheet, rowCount }) => ({ id: sheet.id, name: sheet.name, revision: sheet.revision, rowCount, columns: sheet.columns.map(({ id, name, type }) => ({ id, name, type })), url: `/app/sheets/${encodeURIComponent(sheet.id)}` })) };
+				const { sheets, total, nextOffset } = await this.list(args);
+				return { sheets: args.includeDefinitions ? sheets : sheets.map(({ sheet, rowCount }) => ({ id: sheet.id, name: sheet.name, revision: sheet.revision, rowCount, columns: sheet.columns.map(({ id, name, type }) => ({ id, name, type })), url: `/app/sheets/${encodeURIComponent(sheet.id)}` })), total, nextOffset };
 			}
 			case 'get_sheet': {
 				const args = parseInput(mcpTools.get_sheet.schema, input, 'Invalid arguments.');
@@ -153,7 +156,8 @@ export class McpOperations {
 				const sheet: Sheet = { id: args.sheetId, name: args.name, columns: columns.map((c) => ({ ...c, createdAt: now })), filters: [], sort: null, dataVersion: SHEET_DATA_VERSION, createdAt: now, updatedAt: now };
 				this.validateColumns(sheet.columns);
 				try { assertNoEnrichmentCycles(sheet.columns, []); } catch (error) { throw new WorkspaceError(error instanceof Error ? error.message : 'Circular enrichment dependency.'); }
-				const existing = (await this.list()).find((entry) => entry.sheet.id === sheet.id);
+				// A retried create answers with the sheet it made the first time.
+				const existing = await this.snapshot(sheet.id).catch((error) => { if (error instanceof WorkspaceError && error.status === 404) return undefined; throw error; });
 				if (existing) {
 					const shape = (s: Sheet) => canonicalJson([s.name, s.columns.map((c) => ({ ...c, createdAt: 0 }))]);
 					if (shape(existing.sheet) !== shape(sheet)) throw new WorkspaceError('This sheetId already exists with a different configuration.', 409);

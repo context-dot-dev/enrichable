@@ -1,12 +1,12 @@
 'use client';
 
-import { db, loadSheet, sheetSync, upgradeSheet } from '@/lib/db';
+import { db, loadSheet, sheetCurrent, upgradeSheet } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { type ReactNode, useEffect, useState } from 'react';
 
 /**
- * A teammate's sheet can be cached from the live index without rows, or with older rows than the server.
+ * Rows load when a sheet is opened: this browser may never have opened it, or may hold older rows than the workspace.
  * Load it before the sheet renders, so it never shows an empty grid or edits a stale revision. An older sheet is
  * upgraded first, so its header never flips from a legacy name.
  */
@@ -17,8 +17,8 @@ export function SheetLoadGate({ sheetId, children }: { sheetId: string; children
 		let cancelled = false;
 		void (async () => {
 			const sheet = await db.sheets.get(sheetId);
-			const sync = sheet && sheetSync(sheet);
-			if (sync === 'index-only' || sync === 'stale') await loadSheet(sheetId);
+			// A sheet the workspace no longer has is reported by the page itself (useSheetData).
+			if (!sheet || !sheetCurrent(sheet)) await loadSheet(sheetId);
 			// A failed upgrade keeps the legacy name; the next load tries again.
 			await upgradeSheet(sheetId).catch(() => {});
 		})().then(

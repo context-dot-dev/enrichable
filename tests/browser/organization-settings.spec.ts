@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
+import { SHEET_LIST_URL, sheetsResponse } from '../support/sheet-list';
 
 const defaults = { model: 'gpt-6-luna', classifierModel: 'decisions', concurrency: 4, preferJev: true, logolinkKey: '', openaiBaseUrl: '' };
 
@@ -11,7 +12,7 @@ test('organization keys stay on server, work on a second device/member, and reje
  async function device(user: string) {
   const context = await browser.newContext(); contexts.push(context);
   await context.addCookies([{name:'enrichable.session',value:memberCookie(user),url:baseURL!,httpOnly:true,sameSite:'Lax'}]);
-  await context.route('**/api/sheets',route=>route.fulfill({json:[]}));
+  await context.route(SHEET_LIST_URL, (route) => route.fulfill({ json: sheetsResponse(route.request().url()) }));
   await context.route('**/api/mcp-key',route=>route.fulfill({json:{key:null}}));
   await context.route('**/api/context/usage*',route=>route.fulfill({json:{credits:100,used:0}}));
   await context.route('**/api/openai/usage*',route=>route.fulfill({json:{enabled:false}}));

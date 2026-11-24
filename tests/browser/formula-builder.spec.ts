@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { Row, Sheet } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 const timestamp = 1_800_000_000_000;
 const initialSheet: Sheet = {
@@ -32,7 +33,7 @@ test.beforeEach(async ({ context, baseURL }) => {
    rows = rows.filter((row) => !body.deleted.includes(row.id)).map((row) => changed.get(row.id) ?? row);
    await route.fulfill({ json: { revision: sheet.revision, updatedAt: sheet.updatedAt } });
   } else {
-   await route.fulfill({ json: new URL(request.url()).pathname === '/api/sheets' ? [{ sheet, rowCount: rows.length }] : { sheet, rows, next: null } });
+   await route.fulfill({ json: new URL(request.url()).pathname === '/api/sheets' ? sheetsResponse(request.url(), [{ sheet, rows }]) : { sheet, rows, next: null } });
   }
  });
  await context.route('**/api/keys/verify', (route) => route.fulfill({ json: route.request().method() === 'GET' ? { openai: true, context: true, typesafe: false } : { openai: { ok: true, inference: true }, context: { ok: true, credits: 25000 }, typesafe: { ok: true, configured: false } } }));

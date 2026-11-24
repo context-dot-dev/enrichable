@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Row, Sheet } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 // Exercise the real app and IndexedDB while keeping every remote write/provider
 // request in memory. Mobile tests never access a configured shared database.
@@ -44,7 +45,7 @@ async function workspace(page: Page, options: { connected?: boolean; seeded?: bo
 				sheets.set(value.sheet.id, value);
 				return route.fulfill({ json: value.sheet });
 			}
-			return route.fulfill({ json: [...sheets.values()].map(({ sheet, rows }) => ({ sheet, rowCount: rows.length })) });
+			return route.fulfill({ json: sheetsResponse(request.url(), [...sheets.values()]) });
 		}
 		if (url.pathname.startsWith('/api/sheets/')) {
 			const id = decodeURIComponent(url.pathname.split('/')[3]), value = sheets.get(id);

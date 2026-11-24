@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { Sheet, Row } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 // Exercise the actual UI and persistence requests without depending on a live Neon database.
 test('column-wide formats display currency and units and persist checkbox booleans', async ({ page, context, baseURL }) => {
@@ -18,7 +19,7 @@ test('column-wide formats display currency and units and persist checkbox boolea
 			const updates = new Map<string, Row>(body.rows.map((row: Row) => [row.id, row]));
 			rows = rows.map((row) => updates.get(row.id) ?? row);
 			await route.fulfill({ json: { revision: sheet.revision, updatedAt: Date.now() } });
-		} else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: [{ sheet, rowCount: rows.length }] });
+		} else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: sheetsResponse(request.url(), [{ sheet, rows }]) });
 		else await route.fulfill({ json: { sheet, rows, next: null } });
 	});
 	await page.goto(`/app/sheets/${sheet.id}`);
@@ -90,7 +91,7 @@ test('years omit commas and column number settings survive reload without changi
 			const updates = new Map<string, Row>(body.rows.map((row: Row) => [row.id, row]));
 			rows = rows.map((row) => updates.get(row.id) ?? row);
 			await route.fulfill({ json: { revision: sheet.revision, updatedAt: Date.now() } });
-		} else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: [{ sheet, rowCount: rows.length }] });
+		} else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: sheetsResponse(request.url(), [{ sheet, rows }]) });
 		else await route.fulfill({ json: { sheet, rows, next: null } });
 	});
 	await page.goto(`/app/sheets/${sheet.id}`);
@@ -141,7 +142,7 @@ test('category columns offer configured choices, persist selections, and keep ex
 			const updates = new Map<string, Row>(body.rows.map((row: Row) => [row.id, row]));
 			rows = rows.map((row) => updates.get(row.id) ?? row);
 			await route.fulfill({ json: { revision: sheet.revision, updatedAt: Date.now() } });
-		} else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: [{ sheet, rowCount: rows.length }] });
+		} else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: sheetsResponse(request.url(), [{ sheet, rows }]) });
 		else await route.fulfill({ json: { sheet, rows, next: null } });
 	});
 	await page.goto(`/app/sheets/${sheet.id}`);

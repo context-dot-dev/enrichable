@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { memberCookie } from './authenticated-test';
 import type { Sheet, Row } from '../../src/lib/types';
+import { sheetsResponse } from '../support/sheet-list';
 
 test('email drafts show collapsed recipients and persist field edits', async ({ page, context, baseURL }) => {
  await context.addCookies([{ name: 'enrichable.session', value: memberCookie('email-test'), url: baseURL!, httpOnly: true, sameSite: 'Lax' }]);
@@ -15,7 +16,7 @@ test('email drafts show collapsed recipients and persist field edits', async ({ 
    const body = request.postDataJSON(); sheet = { ...body.sheet, revision: sheet.revision! + 1 };
    const updates = new Map<string, Row>(body.rows.map((row: Row) => [row.id, row])); rows = rows.map((row) => updates.get(row.id) ?? row);
    await route.fulfill({ json: { revision: sheet.revision, updatedAt: Date.now() } });
-  } else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: [{ sheet, rowCount: rows.length }] });
+  } else if (new URL(request.url()).pathname === '/api/sheets') await route.fulfill({ json: sheetsResponse(request.url(), [{ sheet, rows }]) });
   else await route.fulfill({ json: { sheet, rows, next: null } });
  });
  await page.goto(`/app/sheets/${sheet.id}`);

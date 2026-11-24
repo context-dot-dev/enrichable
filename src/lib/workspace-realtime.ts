@@ -1,7 +1,8 @@
 import type { SealedLiveQuery } from '@neon/realtime/client';
 import { PRESENCE_TTL_MS, currentCollaborators, peerSchema, type Collaborator, type CollaborationStatus, type LiveSheetEntry } from './collaboration';
 
-export type IndexRow = { id: string; revision: number; data: unknown; row_count: number; preview_rows: unknown[] };
+/** One sheet in the live sheet index (WORKSPACE_LIVE_SQL). */
+export type IndexRow = { id: string; revision: number; name: string; created_at: number };
 export type RealtimeBundle = { enabled: false } | { enabled: true; url: string; userId: string; index: SealedLiveQuery<IndexRow>; sheet?: SealedLiveQuery<LiveSheetEntry>; presence?: SealedLiveQuery<Collaborator> };
 export type CollaborationSnapshot = { status: CollaborationStatus; peers: readonly Collaborator[]; clientId: string; userId?: string; sheetId?: string };
 export type PresenceInput = { clientId: string; sheetId: string; rowId: string | null; columnId: string | null };
@@ -20,7 +21,7 @@ export interface RealtimePorts {
 	bundle(sheetId?: string): Promise<RealtimeBundle>;
 	connect(url: string): LiveConnection;
 	presence: { write(input: PresenceInput, final: boolean): Promise<unknown>; leave(clientId: string): Promise<unknown> };
-	cache: { index(rows: readonly IndexRow[], activeSheetId?: string): unknown; sheet(sheetId: string, rows: readonly LiveSheetEntry[]): unknown };
+	cache: { index(rows: readonly IndexRow[]): unknown; sheet(sheetId: string, rows: readonly LiveSheetEntry[]): unknown };
 	env: { hidden(): boolean; online(): boolean; listen(on: { visibility(): void; connectivity(): void; pagehide(): void }): () => void };
 	clock: { now(): number; after(ms: number, run: () => void): () => void; every(ms: number, run: () => void): () => void };
 }
@@ -180,7 +181,7 @@ export class WorkspaceRealtime {
 					else close();
 				};
 			};
-			const starts = [watch('index', bundle.index, (rows) => cache.index(rows, sheetId))];
+			const starts = [watch('index', bundle.index, (rows) => cache.index(rows))];
 			if (bundle.sheet && sheetId) starts.push(watch('sheet', bundle.sheet, (rows) => cache.sheet(sheetId, rows)));
 			if (bundle.presence) starts.push(watch('presence', bundle.presence, (rows) => { this.rawPeers = rows.map((row) => peerSchema.parse(row)); this.publishPeers(); }));
 			// Every subscription counts as connecting before the phase starts or any reports, so neither an empty
